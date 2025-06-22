@@ -11,7 +11,16 @@ function App() {
   const [showTrimModal, setShowTrimModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState("home");
+  const [selectedGenre, setSelectedGenre] = useState("jazz");
   const fileInputRef = useRef(null);
+
+  const genreOptions = [
+    { value: "jazz", label: "Jazz", icon: "🎷" },
+    { value: "lofi", label: "Lo-Fi", icon: "🎧" },
+    { value: "pop", label: "Pop", icon: "🎤" },
+    { value: "rock", label: "Rock", icon: "🎸" },
+    { value: "hiphop", label: "Hip Hop", icon: "🎵" }
+  ];
 
   const handleFileSelect = (file) => {
     if (file && file.type.startsWith("video/")) {
@@ -84,6 +93,7 @@ function App() {
       formData.append("trimStart", trimData.trimStart);
       formData.append("trimEnd", trimData.trimEnd);
       formData.append("duration", trimData.duration);
+      formData.append("genre", selectedGenre);
 
       const response = await fetch("http://localhost:8000/upload-video", {
         method: "POST",
@@ -113,7 +123,6 @@ function App() {
         return <About />;
       case "contact":
         return <Contact />;
-      case "home":
       default:
         return (
           <div className="upload-container">
@@ -122,6 +131,7 @@ function App() {
               <h2>Upload Your Video</h2>
               <p>Drop your video file below to get started with AI-powered music generation</p>
             </div>
+
 
             {/* Upload Area */}
             <div
@@ -153,6 +163,28 @@ function App() {
               onChange={handleFileInputChange}
               style={{ display: "none" }}
             />
+            {/* Genre Selection */}
+            <div className="genre-selection">
+              <label htmlFor="genre-select" className="genre-label">
+                Choose Music Genre:
+              </label>
+              <div className="genre-dropdown">
+                <select
+                  id="genre-select"
+                  value={selectedGenre}
+                  onChange={(e) => setSelectedGenre(e.target.value)}
+                  className="genre-select"
+                >
+                  {genreOptions.map((genre) => (
+                    <option key={genre.value} value={genre.value}>
+                      {genre.icon} {genre.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+
           </div>
         );
     }
