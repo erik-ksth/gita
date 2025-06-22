@@ -1,4 +1,4 @@
 from .video_processing_agent import video_processing_agent, extract_frames, attach_audio
-from .vision_analysis_agent import vision_analysis_agent, analyze_images
+from .vision_analysis_agent import vision_analysis_agent, analyze_images_from_supabase
 from .music_generation_agent import music_generation_agent, generate_music
 from .orchestrator_agent import run_video_to_music_workflow 

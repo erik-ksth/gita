@@ -33,7 +33,7 @@ def run_video_to_music_workflow(video_path: str, vision_prompt: str, music_promp
         print(f"Frames extracted: {len(frames)}")
 
     # Step 2: Analyze frames using the vision analysis agent
-    description = analyze_images(image_paths=frames, prompt=vision_prompt)
+    description = analyze_images_from_supabase(image_paths=frames)
     print(f"Scene description: {description}")
 
     # Step 3: Generate music using the music generation agent
@@ -48,5 +48,5 @@ def run_video_to_music_workflow(video_path: str, vision_prompt: str, music_promp
 
 # Import the functions from the agents
 from .video_processing_agent import extract_frames, attach_audio
-from .vision_analysis_agent import analyze_images
+from .vision_analysis_agent import analyze_images_from_supabase
 from .music_generation_agent import generate_music 

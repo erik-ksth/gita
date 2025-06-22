@@ -10,10 +10,15 @@ from agents.video_processing_agent import extract_frames, get_video_info
 
 app = FastAPI(title="Gita API", description="AI Music Generation API")
 
+# Set up CORS using an environment variable
+# For local dev, default to allowing http://localhost:3000 (standard React port)
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+origins = [origin.strip() for origin in CORS_ORIGINS.split(",")]
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers

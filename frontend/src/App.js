@@ -14,12 +14,14 @@ function App() {
   const [selectedGenre, setSelectedGenre] = useState("jazz");
   const fileInputRef = useRef(null);
 
+  const apiUrl = process.env.REACT_APP_API_URL;
+
   const genreOptions = [
     { value: "jazz", label: "Jazz", icon: "🎷" },
     { value: "lofi", label: "Lo-Fi", icon: "🎧" },
     { value: "pop", label: "Pop", icon: "🎤" },
     { value: "rock", label: "Rock", icon: "🎸" },
-    { value: "hiphop", label: "Hip Hop", icon: "🎵" }
+    { value: "hiphop", label: "Hip Hop", icon: "🎵" },
   ];
 
   const handleFileSelect = (file) => {
@@ -95,7 +97,7 @@ function App() {
       formData.append("duration", trimData.duration);
       formData.append("genre", selectedGenre);
 
-      const response = await fetch("http://localhost:8000/upload-video", {
+      const response = await fetch(`${apiUrl}/upload-video`, {
         method: "POST",
         body: formData,
       });
@@ -129,9 +131,11 @@ function App() {
             {/* File Prompt Section */}
             <div className="file-prompt">
               <h2>Upload Your Video</h2>
-              <p>Drop your video file below to get started with AI-powered music generation</p>
+              <p>
+                Drop your video file below to get started with AI-powered music
+                generation
+              </p>
             </div>
-
 
             {/* Upload Area */}
             <div
@@ -183,8 +187,6 @@ function App() {
                 </select>
               </div>
             </div>
-
-
           </div>
         );
     }
@@ -195,66 +197,101 @@ function App() {
       {/* Header Navigation */}
       <nav className="header-nav">
         <div className="header-container">
-          <button 
-            className="app-brand" 
-            onClick={() => navigateToPage("home")}
-          >
+          <button className="app-brand" onClick={() => navigateToPage("home")}>
             <img src="/GITA_1.png" alt="GITA Icon" className="app-icon" />
             <span>GITA</span>
           </button>
-          
+
           {/* Mobile Menu Button */}
           <button className="mobile-menu-button" onClick={toggleMobileMenu}>
-            <span className={`hamburger ${isMobileMenuOpen ? 'open' : ''}`}></span>
+            <span
+              className={`hamburger ${isMobileMenuOpen ? "open" : ""}`}
+            ></span>
           </button>
-          
+
           {/* Desktop Navigation */}
           <ul className="nav-menu desktop-nav">
-            <li><button 
-              className={`nav-link ${currentPage === "dashboard" ? "active" : ""}`}
-              onClick={() => navigateToPage("dashboard")}
-            >Dashboard</button></li>
+            <li>
+              <button
+                className={`nav-link ${
+                  currentPage === "dashboard" ? "active" : ""
+                }`}
+                onClick={() => navigateToPage("dashboard")}
+              >
+                Dashboard
+              </button>
+            </li>
             {/* <li><button 
               className={`nav-link ${currentPage === "history" ? "active" : ""}`}
               onClick={() => navigateToPage("history")}
             >History</button></li> */}
-            <li><button 
-              className={`nav-link ${currentPage === "about" ? "active" : ""}`}
-              onClick={() => navigateToPage("about")}
-            >About</button></li>
-            <li><button 
-              className={`nav-link ${currentPage === "contact" ? "active" : ""}`}
-              onClick={() => navigateToPage("contact")}
-            >Contact</button></li>
+            <li>
+              <button
+                className={`nav-link ${
+                  currentPage === "about" ? "active" : ""
+                }`}
+                onClick={() => navigateToPage("about")}
+              >
+                About
+              </button>
+            </li>
+            <li>
+              <button
+                className={`nav-link ${
+                  currentPage === "contact" ? "active" : ""
+                }`}
+                onClick={() => navigateToPage("contact")}
+              >
+                Contact
+              </button>
+            </li>
           </ul>
-          
+
           {/* Mobile Navigation Dropdown */}
-          <div className={`mobile-nav-dropdown ${isMobileMenuOpen ? 'open' : ''}`}>
+          <div
+            className={`mobile-nav-dropdown ${isMobileMenuOpen ? "open" : ""}`}
+          >
             <ul className="nav-menu mobile-nav">
-              <li><button 
-                className={`nav-link ${currentPage === "dashboard" ? "active" : ""}`}
-                onClick={() => navigateToPage("dashboard")}
-              >Dashboard</button></li>
+              <li>
+                <button
+                  className={`nav-link ${
+                    currentPage === "dashboard" ? "active" : ""
+                  }`}
+                  onClick={() => navigateToPage("dashboard")}
+                >
+                  Dashboard
+                </button>
+              </li>
               {/* <li><button 
                 className={`nav-link ${currentPage === "history" ? "active" : ""}`}
                 onClick={() => navigateToPage("history")}
               >History</button></li> */}
-              <li><button 
-                className={`nav-link ${currentPage === "about" ? "active" : ""}`}
-                onClick={() => navigateToPage("about")}
-              >About</button></li>
-              <li><button 
-                className={`nav-link ${currentPage === "contact" ? "active" : ""}`}
-                onClick={() => navigateToPage("contact")}
-              >Contact</button></li>
+              <li>
+                <button
+                  className={`nav-link ${
+                    currentPage === "about" ? "active" : ""
+                  }`}
+                  onClick={() => navigateToPage("about")}
+                >
+                  About
+                </button>
+              </li>
+              <li>
+                <button
+                  className={`nav-link ${
+                    currentPage === "contact" ? "active" : ""
+                  }`}
+                  onClick={() => navigateToPage("contact")}
+                >
+                  Contact
+                </button>
+              </li>
             </ul>
           </div>
         </div>
       </nav>
 
-      <main className="App-main">
-        {renderPageContent()}
-      </main>
+      <main className="App-main">{renderPageContent()}</main>
 
       <VideoTrimModal
         isOpen={showTrimModal}
