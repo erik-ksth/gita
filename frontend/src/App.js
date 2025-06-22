@@ -12,7 +12,7 @@ function App() {
     setLoading(true);
     try {
       // This will call your Python backend API
-      const response = await fetch("http://localhost:8000/api/search-music", {
+      const response = await fetch("http://localhost:8000/search-music", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
