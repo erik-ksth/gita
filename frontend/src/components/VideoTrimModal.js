@@ -1,4 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { fetchFile } from "@ffmpeg/util";
+
+// Initialize FFmpeg instance
+const ffmpeg = new FFmpeg();
 
 const VideoTrimModal = ({
   isOpen,
@@ -12,9 +17,73 @@ const VideoTrimModal = ({
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(15);
   const [trimmedDuration, setTrimmedDuration] = useState(15);
+  const [trimmedVideoBlob, setTrimmedVideoBlob] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
   const videoRef = useRef(null);
 
   const MAX_DURATION = 15; // 15 seconds maximum
+
+  // Load FFmpeg on component mount
+  useEffect(() => {
+    const loadFFmpeg = async () => {
+      try {
+        if (!ffmpeg.loaded) {
+          await ffmpeg.load();
+          setFfmpegLoaded(true);
+        }
+      } catch (error) {
+        console.error("Failed to load FFmpeg:", error);
+      }
+    };
+
+    if (isOpen) {
+      loadFFmpeg();
+    }
+  }, [isOpen]);
+
+  // Trim video using FFmpeg
+  const trimVideo = async (videoFile, startTime, endTime) => {
+    if (!ffmpegLoaded) {
+      throw new Error("FFmpeg not loaded");
+    }
+
+    try {
+      // Write input file to FFmpeg file system
+      const inputFileName = "input.mp4";
+      const outputFileName = "output.mp4";
+
+      await ffmpeg.writeFile(inputFileName, await fetchFile(videoFile));
+
+      // Run FFmpeg command to trim video
+      await ffmpeg.exec([
+        "-i",
+        inputFileName,
+        "-ss",
+        startTime.toString(),
+        "-t",
+        (endTime - startTime).toString(),
+        "-c",
+        "copy", // Copy streams without re-encoding for speed
+        outputFileName,
+      ]);
+
+      // Read the output file
+      const data = await ffmpeg.readFile(outputFileName);
+
+      // Create blob from the trimmed video data
+      const trimmedBlob = new Blob([data.buffer], { type: "video/mp4" });
+
+      // Clean up
+      await ffmpeg.deleteFile(inputFileName);
+      await ffmpeg.deleteFile(outputFileName);
+
+      return trimmedBlob;
+    } catch (error) {
+      console.error("FFmpeg trimming error:", error);
+      throw error;
+    }
+  };
 
   useEffect(() => {
     if (isOpen && selectedFile) {
@@ -56,7 +125,7 @@ const VideoTrimModal = ({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (trimmedDuration > MAX_DURATION) {
       alert(
         `Video must be ${MAX_DURATION} seconds or less. Current selection: ${trimmedDuration.toFixed(
@@ -71,23 +140,47 @@ const VideoTrimModal = ({
       return;
     }
 
-    onUpload({
-      file: selectedFile,
-      trimStart,
-      trimEnd,
-      duration: trimmedDuration,
-    });
+    if (!ffmpegLoaded) {
+      alert("Video processor is still loading. Please wait.");
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+
+      // Create trimmed video blob
+      const trimmedBlob = await trimVideo(selectedFile, trimStart, trimEnd);
+      setTrimmedVideoBlob(trimmedBlob);
+
+      // Send trimmed video to backend
+      onUpload({
+        file: trimmedBlob, // Send the trimmed blob instead of original file
+        originalFileName: selectedFile.name,
+        trimStart,
+        trimEnd,
+        duration: trimmedDuration,
+      });
+    } catch (error) {
+      console.error("Error trimming video:", error);
+      alert("Failed to trim video. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleClose = () => {
     if (videoUrl) {
       URL.revokeObjectURL(videoUrl);
     }
+    if (trimmedVideoBlob) {
+      URL.revokeObjectURL(URL.createObjectURL(trimmedVideoBlob));
+    }
     setVideoUrl(null);
     setVideoDuration(0);
     setTrimStart(0);
     setTrimEnd(15);
     setTrimmedDuration(15);
+    setTrimmedVideoBlob(null);
     onClose();
   };
 
@@ -134,6 +227,9 @@ const VideoTrimModal = ({
                 Original: {formatTime(videoDuration)} | Trimmed:{" "}
                 {formatTime(trimmedDuration)}
               </p>
+              {!ffmpegLoaded && (
+                <p className="info-message">Loading video processor...</p>
+              )}
               {trimmedDuration > MAX_DURATION && (
                 <p className="error-message">
                   ⚠️ Selection exceeds {MAX_DURATION}s limit
@@ -175,7 +271,7 @@ const VideoTrimModal = ({
           <button
             onClick={handleClose}
             className="cancel-button"
-            disabled={uploading}
+            disabled={uploading || isProcessing}
           >
             Cancel
           </button>
@@ -183,12 +279,20 @@ const VideoTrimModal = ({
             onClick={handleUpload}
             disabled={
               uploading ||
+              isProcessing ||
+              !ffmpegLoaded ||
               trimmedDuration > MAX_DURATION ||
               trimStart >= trimEnd
             }
             className="upload-button"
           >
-            {uploading ? "Uploading..." : "Upload & Trim Video"}
+            {!ffmpegLoaded
+              ? "Loading..."
+              : isProcessing
+              ? "Processing..."
+              : uploading
+              ? "Uploading..."
+              : "Upload & Trim Video"}
           </button>
         </div>
       </div>

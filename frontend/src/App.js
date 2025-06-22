@@ -56,7 +56,14 @@ function App() {
     setUploading(true);
     try {
       const formData = new FormData();
-      formData.append("video", trimData.file);
+
+      // Use the trimmed video blob
+      formData.append(
+        "video",
+        trimData.file,
+        trimData.originalFileName || "trimmed-video.mp4"
+      );
+      formData.append("originalFileName", trimData.originalFileName || "");
       formData.append("trimStart", trimData.trimStart);
       formData.append("trimEnd", trimData.trimEnd);
       formData.append("duration", trimData.duration);
@@ -68,7 +75,7 @@ function App() {
 
       if (response.ok) {
         const result = await response.json();
-        alert("Video uploaded and trimmed successfully!");
+        // alert("Video uploaded and trimmed successfully!");
         handleCloseModal();
       } else {
         throw new Error("Upload failed");
