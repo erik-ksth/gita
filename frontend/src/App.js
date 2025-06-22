@@ -1,5 +1,7 @@
 import React, { useState, useRef } from "react";
 import VideoTrimModal from "./components/VideoTrimModal";
+import About from "./components/About";
+import Contact from "./components/Contact";
 import "./App.css";
 
 function App() {
@@ -7,6 +9,8 @@ function App() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [showTrimModal, setShowTrimModal] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState("home");
   const fileInputRef = useRef(null);
 
   const handleFileSelect = (file) => {
@@ -52,6 +56,19 @@ function App() {
     }
   };
 
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+  };
+
+  const navigateToPage = (page) => {
+    setCurrentPage(page);
+    closeMobileMenu();
+  };
+
   const handleUpload = async (trimData) => {
     setUploading(true);
     try {
@@ -74,7 +91,8 @@ function App() {
       });
 
       if (response.ok) {
-        const result = await response.json();
+        //const result = await response.json();
+        await response.json();
         // alert("Video uploaded and trimmed successfully!");
         handleCloseModal();
       } else {
@@ -88,45 +106,122 @@ function App() {
     }
   };
 
-  return (
-    <div className="App">
-      <header className="App-header">
-        <h1>🎬 Gita</h1>
-        <p>Upload & Trim Your Video (Max 15s)</p>
-      </header>
+  // Render current page content
+  const renderPageContent = () => {
+    switch (currentPage) {
+      case "about":
+        return <About />;
+      case "contact":
+        return <Contact />;
+      case "home":
+      default:
+        return (
+          <div className="upload-container">
+            {/* File Prompt Section */}
+            <div className="file-prompt">
+              <h2>Upload Your Video</h2>
+              <p>Drop your video file below to get started with AI-powered music generation</p>
+            </div>
 
-      <main className="App-main">
-        <div className="upload-container">
-          <div
-            className={`upload-area ${isDragOver ? "drag-over" : ""}`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <div className="upload-content">
-              <div className="upload-prompt">
-                <div className="upload-icon">📁</div>
-                <h3>Drop your video here</h3>
-                <p>or click to browse</p>
-                <button
-                  className="browse-button"
-                  onClick={handleBrowseClick}
-                  type="button"
-                >
-                  Choose File
-                </button>
+            {/* Upload Area */}
+            <div
+              className={`upload-area ${isDragOver ? "drag-over" : ""}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              <div className="upload-content">
+                <div className="upload-prompt">
+                  <div className="upload-icon">📁</div>
+                  <h3>Drop your video here</h3>
+                  <p>or click to browse</p>
+                  <button
+                    className="browse-button"
+                    onClick={handleBrowseClick}
+                    type="button"
+                  >
+                    Choose File
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="video/*"
-            onChange={handleFileInputChange}
-            style={{ display: "none" }}
-          />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*"
+              onChange={handleFileInputChange}
+              style={{ display: "none" }}
+            />
+          </div>
+        );
+    }
+  };
+
+  return (
+    <div className="App">
+      {/* Header Navigation */}
+      <nav className="header-nav">
+        <div className="header-container">
+          <button 
+            className="app-brand" 
+            onClick={() => navigateToPage("home")}
+          >
+            <img src="/GITA_1.png" alt="GITA Icon" className="app-icon" />
+            <span>GITA</span>
+          </button>
+          
+          {/* Mobile Menu Button */}
+          <button className="mobile-menu-button" onClick={toggleMobileMenu}>
+            <span className={`hamburger ${isMobileMenuOpen ? 'open' : ''}`}></span>
+          </button>
+          
+          {/* Desktop Navigation */}
+          <ul className="nav-menu desktop-nav">
+            <li><button 
+              className={`nav-link ${currentPage === "dashboard" ? "active" : ""}`}
+              onClick={() => navigateToPage("dashboard")}
+            >Dashboard</button></li>
+            {/* <li><button 
+              className={`nav-link ${currentPage === "history" ? "active" : ""}`}
+              onClick={() => navigateToPage("history")}
+            >History</button></li> */}
+            <li><button 
+              className={`nav-link ${currentPage === "about" ? "active" : ""}`}
+              onClick={() => navigateToPage("about")}
+            >About</button></li>
+            <li><button 
+              className={`nav-link ${currentPage === "contact" ? "active" : ""}`}
+              onClick={() => navigateToPage("contact")}
+            >Contact</button></li>
+          </ul>
+          
+          {/* Mobile Navigation Dropdown */}
+          <div className={`mobile-nav-dropdown ${isMobileMenuOpen ? 'open' : ''}`}>
+            <ul className="nav-menu mobile-nav">
+              <li><button 
+                className={`nav-link ${currentPage === "dashboard" ? "active" : ""}`}
+                onClick={() => navigateToPage("dashboard")}
+              >Dashboard</button></li>
+              {/* <li><button 
+                className={`nav-link ${currentPage === "history" ? "active" : ""}`}
+                onClick={() => navigateToPage("history")}
+              >History</button></li> */}
+              <li><button 
+                className={`nav-link ${currentPage === "about" ? "active" : ""}`}
+                onClick={() => navigateToPage("about")}
+              >About</button></li>
+              <li><button 
+                className={`nav-link ${currentPage === "contact" ? "active" : ""}`}
+                onClick={() => navigateToPage("contact")}
+              >Contact</button></li>
+            </ul>
+          </div>
         </div>
+      </nav>
+
+      <main className="App-main">
+        {renderPageContent()}
       </main>
 
       <VideoTrimModal
