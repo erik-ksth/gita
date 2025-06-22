@@ -1,6 +1,6 @@
 import os
 from .video_processing_agent import video_processing_agent, download_video_from_supabase, combine_video_with_audio_from_supabase
-from .vision_analysis_agent import vision_analysis_agent
+from .vision_analysis_agent import vision_analysis_agent, analyze_video_frames_from_supabase
 from .music_generation_agent import music_generation_agent
 from supabase_config import supabase
 
@@ -15,33 +15,47 @@ def run_video_to_music_workflow(video_id: str, vision_prompt: str, music_prompt:
     """
     print(f"Starting workflow for video ID: {video_id}")
 
-    # Step 1: Get extracted frames from Supabase database
+    # Step 1: Get the pre-computed vision analysis from the database
     try:
-        result = supabase.table("frames").select("file_path").eq("video_id", video_id).execute()
+        result = supabase.table("videos").select("vision_analysis, processing_status").eq("id", video_id).execute()
         
-        if result.data and len(result.data) > 0:
-            # Use existing frames from Supabase
-            frames = [frame["file_path"] for frame in result.data]
-            print(f"Using existing {len(frames)} frames from Supabase")
+        if not result.data:
+            raise Exception(f"Video with ID {video_id} not found in database")
+        
+        video_data = result.data[0]
+        stored_analysis = video_data.get("vision_analysis")
+        processing_status = video_data.get("processing_status")
+        
+        if stored_analysis:
+            # Use the pre-computed analysis result
+            print(f"Using pre-computed vision analysis from database")
+            description = stored_analysis
         else:
-            # This should not happen as frames are extracted during upload
-            # But we can fallback to re-extracting if needed
-            print("No frames found in database. This should not happen after upload.")
-            raise Exception("No frames found for this video. Please re-upload the video.")
+            # Fallback: Analyze frames using video_id if no stored analysis exists
+            print("No pre-computed analysis found, analyzing frames now...")
+            description = analyze_video_frames_from_supabase(video_id)
+            
+            # Save the analysis result for future use
+            try:
+                supabase.table("videos").update({
+                    "vision_analysis": description,
+                    "processing_status": "analyzed"
+                }).eq("id", video_id).execute()
+                print("Saved vision analysis to database for future use")
+            except Exception as save_error:
+                print(f"Warning: Could not save analysis result: {save_error}")
             
     except Exception as e:
-        print(f"Error retrieving frames from database: {e}")
+        print(f"Error retrieving video data: {e}")
         raise
 
-    # Step 2: Analyze frames using the vision analysis agent
-    description = analyze_images_from_supabase(image_paths=frames)
     print(f"Scene description: {description}")
 
-    # Step 3: Generate music using the music generation agent
+    # Step 2: Generate music using the music generation agent
     music_file = generate_music(description=description, custom_prompt=music_prompt)
     print(f"Music file generated: {music_file}")
 
-    # Step 4: Combine video with audio using Supabase workflow
+    # Step 3: Combine video with audio using Supabase workflow
     try:
         # Extract just the filename from the music file path for the audio parameter
         audio_filename = os.path.basename(music_file) if music_file else None
@@ -99,5 +113,5 @@ def run_video_to_music_workflow_legacy(video_path: str, vision_prompt: str, musi
 
 # Import the functions from the agents
 from .video_processing_agent import extract_frames, attach_audio
-from .vision_analysis_agent import analyze_images_from_supabase
+from .vision_analysis_agent import analyze_video_frames_from_supabase
 from .music_generation_agent import generate_music 

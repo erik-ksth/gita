@@ -22,8 +22,11 @@ CREATE TABLE videos (
     trim_end DECIMAL(10,2),
     trim_duration DECIMAL(10,2),
     
+    -- Vision analysis
+    vision_analysis TEXT, -- Stores the generated music prompt from vision analysis
+    
     -- Processing status
-    processing_status VARCHAR(50) DEFAULT 'uploaded', -- uploaded, processing, completed, failed
+    processing_status VARCHAR(50) DEFAULT 'uploaded', -- uploaded, processing, analyzed, completed, failed
     frames_extracted BOOLEAN DEFAULT false,
     
     -- Timestamps

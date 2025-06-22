@@ -8,6 +8,7 @@ import uuid
 from typing import Optional, List
 from agents import run_video_to_music_workflow
 from agents.video_processing_agent import extract_frames, get_video_info
+from agents.vision_analysis_agent import analyze_video_frames_from_supabase
 from supabase_config import supabase, STORAGE_BUCKETS
 
 app = FastAPI(title="Gita API", description="AI Music Generation API")
@@ -155,6 +156,35 @@ def update_video_frames_extracted(video_id: str):
         print(f"Error updating video frames status: {e}")
 
 
+def save_vision_analysis_to_database(video_id: str, analysis_result: str) -> str:
+    """
+    Save vision analysis result to Supabase database.
+    
+    Args:
+        video_id: The UUID of the video
+        analysis_result: The generated music prompt from vision analysis
+        
+    Returns:
+        Success message
+    """
+    try:
+        result = supabase.table("videos").update({
+            "vision_analysis": analysis_result,
+            "processing_status": "analyzed"
+        }).eq("id", video_id).execute()
+        
+        if result.data:
+            print(f"Vision analysis saved for video {video_id}")
+            return "Vision analysis saved successfully"
+        else:
+            print(f"Warning: Could not update video {video_id} with vision analysis")
+            return "Warning: Could not save vision analysis"
+            
+    except Exception as e:
+        print(f"Error saving vision analysis to database: {e}")
+        raise
+
+
 @app.get("/", response_model=dict)
 def root():
     return {
@@ -202,7 +232,8 @@ async def upload_video(
     originalFileName: Optional[str] = Form(None),
     trimStart: Optional[float] = Form(None),
     trimEnd: Optional[float] = Form(None),
-    duration: Optional[float] = Form(None)
+    duration: Optional[float] = Form(None),
+    visionPrompt: Optional[str] = Form(None)
 ):
     temp_file_path = None
     
@@ -258,8 +289,22 @@ async def upload_video(
         # Update video record to indicate frames have been extracted
         update_video_frames_extracted(video_id)
         
+        # Automatically analyze the extracted frames
+        print("Starting automatic vision analysis with Groq...")
+        try:
+            vision_analysis_result = analyze_video_frames_from_supabase(video_id, visionPrompt)
+            print(f"Vision analysis completed: {vision_analysis_result[:100]}...")
+            
+            # Save the analysis result to the database
+            save_vision_analysis_to_database(video_id, vision_analysis_result)
+            print("Vision analysis saved to database")
+            
+        except Exception as analysis_error:
+            print(f"Warning: Vision analysis failed: {analysis_error}")
+            # Continue with upload even if analysis fails
+        
         return VideoUploadResponse(
-            message=f"Video uploaded to Supabase successfully and {len(extracted_frames)} frames extracted",
+            message=f"Video uploaded to Supabase successfully, {len(extracted_frames)} frames extracted, and vision analysis completed",
             filename=unique_filename,
             file_path=video_url,  # Return Supabase URL instead of local path
             video_id=video_id,
@@ -290,7 +335,7 @@ def list_videos():
     try:
         result = supabase.table("videos").select(
             "id, filename, original_filename, duration_seconds, resolution, "
-            "processing_status, frames_extracted, created_at"
+            "processing_status, frames_extracted, vision_analysis, created_at"
         ).order("created_at", desc=True).execute()
         
         videos = []
@@ -304,6 +349,7 @@ def list_videos():
                     "resolution": video["resolution"],
                     "processing_status": video["processing_status"],
                     "frames_extracted": video["frames_extracted"],
+                    "vision_analysis_completed": bool(video.get("vision_analysis")),
                     "created_at": video["created_at"]
                 })
         
