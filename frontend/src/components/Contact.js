@@ -1,37 +1,38 @@
-import React from 'react';
-import './Contact.css';
+import React from "react";
+import "./Contact.css";
 
 function Contact() {
   const handleEmailClick = () => {
-    window.location.href = 'mailto:kaung.s.hein@sjsu.edu';
+    window.location.href = "mailto:kaung.s.hein@sjsu.edu";
   };
 
   const handleGitHubClick = () => {
-    window.open('https://github.com/erik-ksth/gita.git', '_blank');
+    window.open("https://github.com/erik-ksth/gita.git", "_blank");
   };
 
   const handleLandingPageClick = () => {
-    window.open('https://gita.ai', '_blank');
+    window.open("https://gita.ai", "_blank");
   };
 
   return (
-    <div className="contact-page">
-      <div className="contact-container">
-        <div className="contact-header">
+    <div className="page-container contact-page">
+      <div className="glass-card">
+        <div className="page-header">
           <h1>Contact Us</h1>
-          <p className="contact-subtitle">Get in touch with the GITA team</p>
+          <p className="page-subtitle">Get in touch with the GITA team</p>
         </div>
 
-        <div className="contact-content">
-          <div className="contact-section">
+        <div className="page-content">
+          <div className="page-section">
             <h2>Connect With Us</h2>
             <p>
-              Have questions about GITA? Want to collaborate? Need technical support? 
-              We'd love to hear from you! Reach out through any of the channels below.
+              Have questions about GITA? Want to collaborate? Need technical
+              support? We'd love to hear from you! Reach out through any of the
+              channels below.
             </p>
           </div>
 
-          <div className="contact-section">
+          <div className="page-section">
             <h2>Get In Touch</h2>
             <div className="contact-cards">
               <div className="contact-card" onClick={handleEmailClick}>
@@ -39,7 +40,8 @@ function Contact() {
                 <h3>Email Us</h3>
                 {/* <p className="contact-detail">contact@gita.ai</p> */}
                 <p className="contact-description">
-                  Send us an email for general inquiries, support, or collaboration opportunities.
+                  Send us an email for general inquiries, support, or
+                  collaboration opportunities.
                 </p>
                 <div className="contact-action">
                   <span>Send Email →</span>
@@ -50,7 +52,8 @@ function Contact() {
                 <div className="contact-icon">🐙</div>
                 <h3>GitHub</h3>
                 <p className="contact-description">
-                  Check out our open-source code, contribute, or report issues on GitHub.
+                  Check out our open-source code, contribute, or report issues
+                  on GitHub.
                 </p>
                 <div className="contact-action">
                   <span>Visit GitHub →</span>
@@ -112,4 +115,4 @@ function Contact() {
   );
 }
 
-export default Contact; 
+export default Contact;

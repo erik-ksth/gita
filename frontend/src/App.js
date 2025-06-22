@@ -168,7 +168,7 @@ function App() {
               style={{ display: "none" }}
             />
             {/* Genre Selection */}
-            <div className="genre-selection">
+            {/* <div className="genre-selection">
               <label htmlFor="genre-select" className="genre-label">
                 Choose Music Genre:
               </label>
@@ -186,7 +186,7 @@ function App() {
                   ))}
                 </select>
               </div>
-            </div>
+            </div> */}
           </div>
         );
     }
@@ -198,8 +198,7 @@ function App() {
       <nav className="header-nav">
         <div className="header-container">
           <button className="app-brand" onClick={() => navigateToPage("home")}>
-            <img src="/GITA_1.png" alt="GITA Icon" className="app-icon" />
-            <span>GITA</span>
+            <img src="/Logo.png" alt="GITA Icon" className="app-icon" />
           </button>
 
           {/* Mobile Menu Button */}
