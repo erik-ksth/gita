@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "api/search-music.py": {
+      "runtime": "python3.9"
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    }
+  ]
+}
