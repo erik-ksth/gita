@@ -23,31 +23,42 @@ MUSIC_MODEL = f"https://us-central1-aiplatform.googleapis.com/v1/projects/{PROJE
 def get_vision_analysis_from_supabase(video_id: str) -> str:
     """
     Fetch vision analysis result from Supabase database.
-    
+
     Args:
         video_id: The UUID of the video
-        
+
     Returns:
         The vision analysis result as a string
     """
     try:
-        result = supabase.table("videos").select("vision_analysis, filename").eq("id", video_id).execute()
-        
+        result = (
+            supabase.table("videos")
+            .select("vision_analysis, filename")
+            .eq("id", video_id)
+            .execute()
+        )
+
         if not result.data:
             raise Exception(f"Video with ID {video_id} not found")
-        
+
         video_data = result.data[0]
         vision_analysis = video_data.get("vision_analysis")
         filename = video_data.get("filename", "unknown")
-        
+
         if not vision_analysis:
-            print(f"Warning: No vision analysis found for video {video_id} ({filename})")
+            print(
+                f"Warning: No vision analysis found for video {video_id} ({filename})"
+            )
             # Return a default prompt if no analysis is available
-            return "Ambient background music with gentle melodies and peaceful atmosphere"
-        
-        print(f"Retrieved vision analysis for video {video_id} ({filename}): {vision_analysis[:100]}...")
+            return (
+                "Ambient background music with gentle melodies and peaceful atmosphere"
+            )
+
+        print(
+            f"Retrieved vision analysis for video {video_id} ({filename}): {vision_analysis[:100]}..."
+        )
         return vision_analysis
-        
+
     except Exception as e:
         print(f"Error fetching vision analysis from Supabase: {e}")
         raise
@@ -56,11 +67,11 @@ def get_vision_analysis_from_supabase(video_id: str) -> str:
 def upload_music_to_supabase(music_data: bytes, filename: str) -> str:
     """
     Upload generated music to Supabase storage.
-    
+
     Args:
         music_data: The music file data as bytes
         filename: The filename for the music file
-        
+
     Returns:
         The public URL of the uploaded music
     """
@@ -69,15 +80,17 @@ def upload_music_to_supabase(music_data: bytes, filename: str) -> str:
         result = supabase.storage.from_(STORAGE_BUCKETS["music"]).upload(
             filename, music_data, {"content-type": "audio/wav"}
         )
-        
+
         if result:
             # Get public URL
-            public_url = supabase.storage.from_(STORAGE_BUCKETS["music"]).get_public_url(filename)
+            public_url = supabase.storage.from_(
+                STORAGE_BUCKETS["music"]
+            ).get_public_url(filename)
             print(f"Music uploaded to Supabase: {filename}")
             return public_url
         else:
             raise Exception("Failed to upload music to Supabase")
-            
+
     except Exception as e:
         print(f"Error uploading music to Supabase: {e}")
         raise
@@ -198,33 +211,41 @@ def generate_music_with_lyria(
         raise
 
 
-def create_music_generation_record(video_id: str, vision_prompt: str = None, music_prompt: str = None) -> str:
+def create_music_generation_record(
+    video_id: str, vision_prompt: str = None, music_prompt: str = None
+) -> str:
     """
     Create a new music generation record in the database.
-    
+
     Args:
         video_id: The UUID of the video
         vision_prompt: The vision prompt used
         music_prompt: The custom music prompt (if any)
-        
+
     Returns:
         The UUID of the created music generation record
     """
     try:
-        result = supabase.table("music_generations").insert({
-            "video_id": video_id,
-            "vision_prompt": vision_prompt,
-            "music_prompt": music_prompt,
-            "generation_status": "pending"
-        }).execute()
-        
+        result = (
+            supabase.table("music_generations")
+            .insert(
+                {
+                    "video_id": video_id,
+                    "vision_prompt": vision_prompt,
+                    "music_prompt": music_prompt,
+                    "generation_status": "pending",
+                }
+            )
+            .execute()
+        )
+
         if result.data:
             generation_id = result.data[0]["id"]
             print(f"Created music generation record: {generation_id}")
             return generation_id
         else:
             raise Exception("Failed to create music generation record")
-            
+
     except Exception as e:
         print(f"Error creating music generation record: {e}")
         raise
@@ -233,19 +254,24 @@ def create_music_generation_record(video_id: str, vision_prompt: str = None, mus
 def update_music_generation_record(generation_id: str, **updates) -> None:
     """
     Update a music generation record with new data.
-    
+
     Args:
         generation_id: The UUID of the music generation record
         **updates: Dictionary of fields to update
     """
     try:
-        result = supabase.table("music_generations").update(updates).eq("id", generation_id).execute()
-        
+        result = (
+            supabase.table("music_generations")
+            .update(updates)
+            .eq("id", generation_id)
+            .execute()
+        )
+
         if result.data:
             print(f"Updated music generation record {generation_id}")
         else:
             print(f"Warning: Could not update music generation record {generation_id}")
-            
+
     except Exception as e:
         print(f"Error updating music generation record: {e}")
         # Don't raise here to avoid breaking the workflow
@@ -254,10 +280,10 @@ def update_music_generation_record(generation_id: str, **updates) -> None:
 def get_music_file_size(file_path: str) -> float:
     """
     Get the size of a music file in MB.
-    
+
     Args:
         file_path: Path to the music file
-        
+
     Returns:
         File size in MB
     """
@@ -273,20 +299,20 @@ def get_music_file_size(file_path: str) -> float:
 def generate_music_from_video_id(video_id: str, custom_music_prompt: str = None) -> str:
     """
     Generate music for a video using its stored vision analysis.
-    
+
     Args:
         video_id: The UUID of the video
         custom_music_prompt: Optional custom music prompt to override vision analysis
-        
+
     Returns:
         The Supabase URL of the generated music file
     """
     generation_id = None
     local_music_path = None
-    
+
     try:
         print(f"Generating music for video ID: {video_id}")
-        
+
         # Get the music prompt (either custom or from vision analysis)
         if custom_music_prompt:
             music_prompt = custom_music_prompt
@@ -296,57 +322,57 @@ def generate_music_from_video_id(video_id: str, custom_music_prompt: str = None)
             music_prompt = get_vision_analysis_from_supabase(video_id)
             vision_prompt = music_prompt
             print(f"Using vision analysis as music prompt")
-        
+
         # Create music generation record
         generation_id = create_music_generation_record(
             video_id=video_id,
-            vision_prompt=vision_prompt[:1000] if vision_prompt else None,  # Limit length
-            music_prompt=custom_music_prompt
+            vision_prompt=(
+                vision_prompt[:1000] if vision_prompt else None
+            ),  # Limit length
+            music_prompt=custom_music_prompt,
         )
-        
+
         # Update status to generating
         update_music_generation_record(generation_id, generation_status="generating")
-        
+
         # Generate music using Lyria
         local_music_path = generate_music_with_lyria(
-            prompt=music_prompt,
-            negative_prompt="",
-            sample_count=1
+            prompt=music_prompt, negative_prompt="", sample_count=1
         )
-        
+
         # Get file size
         music_file_size = get_music_file_size(local_music_path)
-        
+
         # Read the generated music file
         with open(local_music_path, "rb") as f:
             music_data = f.read()
-        
+
         # Create filename for Supabase storage
         music_filename = f"music_{video_id}_{generation_id}.wav"
-        
+
         # Upload to Supabase
         music_url = upload_music_to_supabase(music_data, music_filename)
-        
+
         # Update the music generation record with success
         update_music_generation_record(
             generation_id,
             music_file_path=music_url,
             music_file_size_mb=music_file_size,
-            generation_status="completed"
+            generation_status="completed",
         )
-        
+
         print(f"Music generation completed for video {video_id}")
         return music_url
-        
+
     except Exception as e:
         print(f"Error generating music for video {video_id}: {e}")
-        
+
         # Update record with failure status
         if generation_id:
             update_music_generation_record(generation_id, generation_status="failed")
-        
+
         raise
-        
+
     finally:
         # Clean up local file
         if local_music_path and os.path.exists(local_music_path):
@@ -354,29 +380,39 @@ def generate_music_from_video_id(video_id: str, custom_music_prompt: str = None)
                 os.remove(local_music_path)
                 print(f"Cleaned up local music file: {local_music_path}")
             except Exception as cleanup_error:
-                print(f"Warning: Could not clean up local file {local_music_path}: {cleanup_error}")
+                print(
+                    f"Warning: Could not clean up local file {local_music_path}: {cleanup_error}"
+                )
 
 
 def get_music_generations_for_video(video_id: str) -> list:
     """
     Get all music generation records for a specific video.
-    
+
     Args:
         video_id: The UUID of the video
-        
+
     Returns:
         List of music generation records
     """
     try:
-        result = supabase.table("music_generations").select("*").eq("video_id", video_id).order("created_at", desc=True).execute()
-        
+        result = (
+            supabase.table("music_generations")
+            .select("*")
+            .eq("video_id", video_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+
         if result.data:
-            print(f"Found {len(result.data)} music generation records for video {video_id}")
+            print(
+                f"Found {len(result.data)} music generation records for video {video_id}"
+            )
             return result.data
         else:
             print(f"No music generation records found for video {video_id}")
             return []
-            
+
     except Exception as e:
         print(f"Error fetching music generations for video {video_id}: {e}")
         return []
@@ -403,43 +439,29 @@ def generate_music() -> str:
 
 
 # Create the ADK agent
-music_generation_agent = Agent(
-    name="music_generation_agent",
+music_generator_agent = Agent(
+    name="music_generator_agent",
     model="gemini-2.0-flash",
     description="An agent that generates music based on vision analysis from a video using Google's Lyria model.",
     instruction="""You are a music generation agent that creates music using Google's Lyria model based on video analysis.
 
-Your capabilities:
-1. Receive a video_id and fetch the vision analysis from the database
-2. Use the vision analysis as a music prompt for Lyria
-3. Generate music and upload it to Supabase storage
-4. Provide helpful feedback about the generation process
+    Your capabilities:
+    1. Receive a video_id and fetch the vision analysis from the database
+    2. Use the vision analysis as a music prompt for Lyria
+    3. Generate music and upload it to Supabase storage
+    4. Provide helpful feedback about the generation process
 
-When generating music:
-- Use the `generate_music_from_video_id` function with the provided video_id
-- The vision analysis will be automatically fetched and used as the music prompt
-- The generated music will be uploaded to Supabase and local files cleaned up
-- Return the Supabase URL of the generated music
+    When generating music:
+    - Use the `generate_music_from_video_id` tool with the provided video_id
+    - The vision analysis will be automatically fetched and used as the music prompt
+    - The generated music will be uploaded to Supabase and local files cleaned up
+    - Return the Supabase URL of the generated music
 
-Always respond clearly about what you're generating and provide the final URL when complete.
-""",
-    tools=[generate_music_from_video_id, generate_music],  # Keep legacy function for compatibility
+    Always respond clearly about what you're generating and provide the final URL when complete.
+    """,
+    tools=[
+        generate_music_from_video_id,
+        generate_music,
+    ],  # Keep legacy function for compatibility
     output_key="generated_music_url",  # Store the music URL in session state
 )
-
-
-# Example usage and testing
-if __name__ == "__main__":
-    print("=== Music Generation Agent Test ===")
-
-    # Test with a video ID (replace with actual video ID from your database)
-    test_video_id = "your-test-video-id-here"
-    
-    print(f"\n1. Generating music for video ID: {test_video_id}")
-    try:
-        result1 = generate_music_from_video_id(test_video_id)
-        print(f"Generated music URL: {result1}")
-    except Exception as e:
-        print(f"Error: {e}")
-
-    print("\n=== Test Complete ===")

@@ -4,6 +4,7 @@ import cv2
 import tempfile
 import requests
 import uuid
+import time
 from typing import List, Dict
 from io import BytesIO
 from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_audioclips
@@ -24,21 +25,21 @@ def get_video_info(video_path: str) -> Dict[str, any]:
     """
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"Video file not found: {video_path}")
-    
+
     cap = cv2.VideoCapture(video_path)
-    
+
     if not cap.isOpened():
         raise ValueError(f"Could not open video file: {video_path}")
-    
+
     # Get video properties
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     duration = frame_count / fps if fps > 0 else 0
-    
+
     cap.release()
-    
+
     video_info = {
         "fps": fps,
         "frame_count": frame_count,
@@ -47,9 +48,9 @@ def get_video_info(video_path: str) -> Dict[str, any]:
         "duration_seconds": duration,
         "duration_formatted": f"{int(duration // 60)}:{int(duration % 60):02d}",
         "resolution": f"{width}x{height}",
-        "file_size_mb": os.path.getsize(video_path) / (1024 * 1024)
+        "file_size_mb": os.path.getsize(video_path) / (1024 * 1024),
     }
-    
+
     print(f"Video info for {video_path}: {video_info}")
     return video_info
 
@@ -57,38 +58,70 @@ def get_video_info(video_path: str) -> Dict[str, any]:
 def upload_frame_to_supabase(frame_data: bytes, filename: str) -> str:
     """
     Upload frame to Supabase storage.
-    
+
     Args:
         frame_data: The frame image data as bytes
         filename: The filename for the frame
-        
+
     Returns:
         The public URL of the uploaded frame
     """
     try:
-        # Upload frame to Supabase storage
-        result = supabase.storage.from_(STORAGE_BUCKETS["frames"]).upload(
-            filename, frame_data, {"content-type": "image/jpeg"}
-        )
-        
-        if result:
-            # Get public URL
-            public_url = supabase.storage.from_(STORAGE_BUCKETS["frames"]).get_public_url(filename)
-            print(f"Frame uploaded to Supabase: {filename}")
-            return public_url
-        else:
-            raise Exception("Failed to upload frame to Supabase")
-            
+        # Check if file already exists and generate unique filename if needed
+        original_filename = filename
+        counter = 0
+
+        while True:
+            try:
+                # Try to upload with current filename
+                result = supabase.storage.from_(STORAGE_BUCKETS["frames"]).upload(
+                    filename, frame_data, {"content-type": "image/jpeg"}
+                )
+
+                if result:
+                    # Get public URL
+                    public_url = supabase.storage.from_(
+                        STORAGE_BUCKETS["frames"]
+                    ).get_public_url(filename)
+                    print(f"Frame uploaded to Supabase: {filename}")
+                    return public_url
+                else:
+                    raise Exception("Failed to upload frame to Supabase")
+
+            except Exception as e:
+                error_str = str(e)
+                if "409" in error_str and "Duplicate" in error_str:
+                    # File already exists, try with a different name
+                    counter += 1
+                    name_without_ext = original_filename.rsplit(".", 1)[0]
+                    ext = (
+                        original_filename.rsplit(".", 1)[1]
+                        if "." in original_filename
+                        else "jpg"
+                    )
+                    filename = f"{name_without_ext}_{counter}.{ext}"
+                    print(f"File {original_filename} already exists, trying {filename}")
+                else:
+                    # Different error, re-raise
+                    print(f"Error uploading frame to Supabase: {e}")
+                    raise
+
     except Exception as e:
         print(f"Error uploading frame to Supabase: {e}")
         raise
 
 
-def save_frame_to_database(video_id: str, frame_number: int, timestamp: float, 
-                          filename: str, file_path: str, file_size_kb: float) -> str:
+def save_frame_to_database(
+    video_id: str,
+    frame_number: int,
+    timestamp: float,
+    filename: str,
+    file_path: str,
+    file_size_kb: float,
+) -> str:
     """
     Save frame metadata to Supabase database.
-    
+
     Args:
         video_id: The UUID of the parent video
         frame_number: The frame number (0-indexed)
@@ -96,33 +129,79 @@ def save_frame_to_database(video_id: str, frame_number: int, timestamp: float,
         filename: The frame filename
         file_path: The Supabase storage path/URL
         file_size_kb: The file size in KB
-        
+
     Returns:
         The frame UUID
     """
     try:
-        result = supabase.table("frames").insert({
-            "video_id": video_id,
-            "frame_number": frame_number,
-            "timestamp_seconds": timestamp,
-            "filename": filename,
-            "file_path": file_path,
-            "file_size_kb": file_size_kb
-        }).execute()
-        
+        result = (
+            supabase.table("frames")
+            .insert(
+                {
+                    "video_id": video_id,
+                    "frame_number": frame_number,
+                    "timestamp_seconds": timestamp,
+                    "filename": filename,
+                    "file_path": file_path,
+                    "file_size_kb": file_size_kb,
+                }
+            )
+            .execute()
+        )
+
         if result.data:
             frame_id = result.data[0]["id"]
             print(f"Frame metadata saved to database: {filename} (ID: {frame_id})")
             return frame_id
         else:
             raise Exception("Failed to save frame to database")
-            
+
     except Exception as e:
         print(f"Error saving frame to database: {e}")
         raise
 
 
-def extract_frames(video_path: str, num_frames: int = 5, video_id: str = None) -> List[str]:
+def cleanup_existing_frames(video_id: str) -> None:
+    """
+    Clean up existing frames for a video to prevent duplicates.
+
+    Args:
+        video_id: The UUID of the video
+    """
+    try:
+        # Get existing frames for this video
+        result = (
+            supabase.table("frames")
+            .select("filename")
+            .eq("video_id", video_id)
+            .execute()
+        )
+
+        if result.data:
+            print(
+                f"Found {len(result.data)} existing frames for video {video_id}, cleaning up..."
+            )
+
+            # Delete frames from storage
+            for frame_data in result.data:
+                filename = frame_data["filename"]
+                try:
+                    supabase.storage.from_(STORAGE_BUCKETS["frames"]).remove([filename])
+                    print(f"Deleted frame from storage: {filename}")
+                except Exception as e:
+                    print(f"Warning: Could not delete frame {filename}: {e}")
+
+            # Delete frame records from database
+            supabase.table("frames").delete().eq("video_id", video_id).execute()
+            print(f"Deleted {len(result.data)} frame records from database")
+
+    except Exception as e:
+        print(f"Warning: Could not cleanup existing frames: {e}")
+
+
+def extract_frames(
+    video_path: str, num_frames: int = 5, video_id: str = None
+) -> List[str]:
     """
     Extracts exactly num_frames frames from a video file and uploads to Supabase.
 
@@ -136,59 +215,75 @@ def extract_frames(video_path: str, num_frames: int = 5, video_id: str = None) -
     """
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"Video file not found: {video_path}")
-    
+
+    # Clean up existing frames for this video to prevent duplicates
+    if video_id:
+        cleanup_existing_frames(video_id)
+
     # Open the video
     cap = cv2.VideoCapture(video_path)
-    
+
     if not cap.isOpened():
         raise ValueError(f"Could not open video file: {video_path}")
-    
+
     # Get video properties
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     duration = frame_count / fps if fps > 0 else 0
-    
+
     # Calculate interval to get exactly num_frames frames
     if duration <= 0:
         cap.release()
         raise ValueError(f"Invalid video duration: {duration}")
-    
+
     # Calculate time interval between frames
     time_interval = duration / num_frames if num_frames > 1 else duration
-    
+
     frame_urls = []
     extracted_count = 0
-    
-    print(f"Extracting {num_frames} frames from {video_path} (duration: {duration:.2f}s, interval: {time_interval:.2f}s)")
-    
+
+    print(
+        f"Extracting {num_frames} frames from {video_path} (duration: {duration:.2f}s, interval: {time_interval:.2f}s)"
+    )
+
     for i in range(num_frames):
         # Calculate the timestamp for this frame
         timestamp = i * time_interval
-        
+
         # Convert timestamp to frame number
         target_frame = int(timestamp * fps)
-        
+
         # Ensure we don't exceed video length
         if target_frame >= frame_count:
             target_frame = frame_count - 1
-        
+
         # Seek to the target frame
         cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
         ret, frame = cap.read()
-        
+
         if ret:
-            # Create filename with timestamp
-            filename = f"frame_{extracted_count:04d}_t{timestamp:.2f}s.jpg"
-            
+            # Create filename with video_id and timestamp for uniqueness
+            if video_id:
+                # Use video_id in filename to ensure uniqueness
+                filename = (
+                    f"frame_{video_id}_{extracted_count:04d}_t{timestamp:.2f}s.jpg"
+                )
+            else:
+                # Fallback to timestamp-based filename
+                timestamp_ms = int(time.time() * 1000)
+                filename = (
+                    f"frame_{timestamp_ms}_{extracted_count:04d}_t{timestamp:.2f}s.jpg"
+                )
+
             # Convert frame to bytes
-            _, buffer = cv2.imencode('.jpg', frame)
+            _, buffer = cv2.imencode(".jpg", frame)
             frame_bytes = buffer.tobytes()
-            
+
             # Upload frame to Supabase
             try:
                 public_url = upload_frame_to_supabase(frame_bytes, filename)
                 frame_urls.append(public_url)
-                
+
                 # Save frame metadata to database (if video_id provided)
                 if video_id:
                     file_size_kb = len(frame_bytes) / 1024
@@ -198,21 +293,21 @@ def extract_frames(video_path: str, num_frames: int = 5, video_id: str = None) -
                         timestamp=timestamp,
                         filename=filename,
                         file_path=public_url,
-                        file_size_kb=file_size_kb
+                        file_size_kb=file_size_kb,
                     )
-                
+
                 extracted_count += 1
                 print(f"Extracted frame {extracted_count}: {filename}")
-                
+
             except Exception as e:
                 print(f"Error processing frame {extracted_count}: {e}")
                 continue
-                
+
         else:
             print(f"Warning: Could not extract frame at {timestamp:.2f}s")
-    
+
     cap.release()
-    
+
     print(f"Successfully extracted {len(frame_urls)} frames and uploaded to Supabase")
     return frame_urls
 
@@ -220,40 +315,40 @@ def extract_frames(video_path: str, num_frames: int = 5, video_id: str = None) -
 def download_video_from_supabase(video_id: str) -> str:
     """
     Download video from Supabase storage to a temporary file.
-    
+
     Args:
         video_id: The UUID of the video in the database
-        
+
     Returns:
         The path to the downloaded temporary video file
     """
     try:
         # Get video metadata from database
         result = supabase.table("videos").select("*").eq("id", video_id).execute()
-        
+
         if not result.data:
             raise Exception(f"Video with ID {video_id} not found in database")
-        
+
         video_metadata = result.data[0]
         file_path = video_metadata["file_path"]
         filename = video_metadata["filename"]
-        
+
         print(f"Downloading video {filename} from Supabase...")
-        
+
         # Download the video file
         response = requests.get(file_path)
         response.raise_for_status()
-        
+
         # Save to temporary file
         temp_dir = tempfile.gettempdir()
         temp_video_path = os.path.join(temp_dir, f"temp_video_{video_id}_{filename}")
-        
+
         with open(temp_video_path, "wb") as f:
             f.write(response.content)
-        
+
         print(f"Video downloaded to: {temp_video_path}")
         return temp_video_path
-        
+
     except Exception as e:
         print(f"Error downloading video from Supabase: {e}")
         raise
@@ -262,11 +357,11 @@ def download_video_from_supabase(video_id: str) -> str:
 def upload_final_video_to_supabase(video_data: bytes, filename: str) -> str:
     """
     Upload final combined video to Supabase storage.
-    
+
     Args:
         video_data: The video file data as bytes
         filename: The filename for the final video
-        
+
     Returns:
         The public URL of the uploaded final video
     """
@@ -275,25 +370,33 @@ def upload_final_video_to_supabase(video_data: bytes, filename: str) -> str:
         result = supabase.storage.from_(STORAGE_BUCKETS["final_videos"]).upload(
             filename, video_data, {"content-type": "video/mp4"}
         )
-        
+
         if result:
             # Get public URL
-            public_url = supabase.storage.from_(STORAGE_BUCKETS["final_videos"]).get_public_url(filename)
+            public_url = supabase.storage.from_(
+                STORAGE_BUCKETS["final_videos"]
+            ).get_public_url(filename)
             print(f"Final video uploaded to Supabase: {filename}")
             return public_url
         else:
             raise Exception("Failed to upload final video to Supabase")
-            
+
     except Exception as e:
         print(f"Error uploading final video to Supabase: {e}")
         raise
 
 
-def save_final_video_to_database(original_video_id: str, filename: str, file_url: str, 
-                                audio_filename: str, final_duration: float, file_size_mb: float) -> str:
+def save_final_video_to_database(
+    original_video_id: str,
+    filename: str,
+    file_url: str,
+    audio_filename: str,
+    final_duration: float,
+    file_size_mb: float,
+) -> str:
     """
     Save final video metadata to Supabase database.
-    
+
     Args:
         original_video_id: The UUID of the original video
         filename: The final video filename
@@ -301,78 +404,93 @@ def save_final_video_to_database(original_video_id: str, filename: str, file_url
         audio_filename: The audio filename that was combined
         final_duration: The duration of the final video
         file_size_mb: The file size in MB
-        
+
     Returns:
         The final video UUID
     """
     try:
-        result = supabase.table("final_videos").insert({
-            "original_video_id": original_video_id,
-            "filename": filename,
-            "file_path": file_url,
-            "audio_filename": audio_filename,
-            "duration_seconds": final_duration,
-            "file_size_mb": file_size_mb,
-            "processing_status": "completed"
-        }).execute()
-        
+        result = (
+            supabase.table("final_videos")
+            .insert(
+                {
+                    "original_video_id": original_video_id,
+                    "filename": filename,
+                    "file_path": file_url,
+                    "audio_filename": audio_filename,
+                    "duration_seconds": final_duration,
+                    "file_size_mb": file_size_mb,
+                    "processing_status": "completed",
+                }
+            )
+            .execute()
+        )
+
         if result.data:
             final_video_id = result.data[0]["id"]
-            print(f"Final video metadata saved to database: {filename} (ID: {final_video_id})")
+            print(
+                f"Final video metadata saved to database: {filename} (ID: {final_video_id})"
+            )
             return final_video_id
         else:
             raise Exception("Failed to save final video to database")
-            
+
     except Exception as e:
         print(f"Error saving final video to database: {e}")
         raise
 
 
-def attach_audio(video_path: str, audio_path: str, fade_out_duration: float = 1.0) -> str:
+def attach_audio(
+    video_path: str, audio_path: str, fade_out_duration: float = 1.0
+) -> str:
     """
     Attaches an audio file to a video file using MoviePy with fade out effect.
+    Ensures the final video maintains the exact same length as the input video.
 
     Args:
         video_path: The path to the original video file.
         audio_path: The path to the audio file to attach.
-        fade_out_duration: Duration in seconds for the audio fade out effect (default: 2.0).
+        fade_out_duration: Duration in seconds for the audio fade out effect (default: 1.0).
 
     Returns:
         The path to the final video file with audio.
     """
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"Video file not found: {video_path}")
-    
+
     if not os.path.exists(audio_path):
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
-    
+
     print(f"Combining video {video_path} with audio {audio_path}...")
-    
+
     try:
         # Load video and audio clips
         video_clip = VideoFileClip(video_path)
         audio_clip = AudioFileClip(audio_path)
-        
+
         # Get video duration
         video_duration = video_clip.duration
         audio_duration = audio_clip.duration
-        
-        print(f"Video duration: {video_duration:.2f}s, Audio duration: {audio_duration:.2f}s")
-        
-        # If audio is longer than video, trim it to video length
+
+        print(
+            f"Video duration: {video_duration:.2f}s, Audio duration: {audio_duration:.2f}s"
+        )
+
+        # Process audio to match video duration exactly
         if audio_duration > video_duration:
+            # If audio is longer than video, trim it to video length
             print(f"Trimming audio to match video duration ({video_duration:.2f}s)")
             audio_clip = audio_clip.subclip(0, video_duration)
-        # If video is longer than audio, loop the audio
         elif video_duration > audio_duration:
+            # If video is longer than audio, loop the audio to fill the entire video
             print(f"Looping audio to match video duration ({video_duration:.2f}s)")
             # Calculate how many times to loop
             loops_needed = int(video_duration / audio_duration) + 1
             audio_clips = [audio_clip] * loops_needed
             looped_audio = concatenate_audioclips(audio_clips)
+            # Trim to exact video duration
             audio_clip = looped_audio.subclip(0, video_duration)
-        
-        # Apply fade out effect to the audio
+
+        # Apply fade out effect to the audio (only if it's longer than fade duration)
         if fade_out_duration > 0 and audio_clip.duration > fade_out_duration:
             print(f"Applying fade out effect ({fade_out_duration:.1f}s)")
             try:
@@ -384,39 +502,82 @@ def attach_audio(video_path: str, audio_path: str, fade_out_duration: float = 1.
                 try:
                     audio_clip = audio_fadeout(audio_clip, fade_out_duration)
                 except Exception as e:
-                    print(f"Warning: audio_fadeout failed ({e}), continuing without fade out")
+                    print(
+                        f"Warning: audio_fadeout failed ({e}), continuing without fade out"
+                    )
             except Exception as e:
                 # If any other error occurs, skip the fade out effect
-                print(f"Warning: Could not apply fade out effect ({e}), continuing without it")
-        
+                print(
+                    f"Warning: Could not apply fade out effect ({e}), continuing without it"
+                )
+
+        # Ensure audio duration matches video duration exactly
+        if abs(audio_clip.duration - video_duration) > 0.1:  # Allow 0.1s tolerance
+            print(
+                f"Adjusting audio duration from {audio_clip.duration:.2f}s to {video_duration:.2f}s"
+            )
+            if audio_clip.duration > video_duration:
+                audio_clip = audio_clip.subclip(0, video_duration)
+            else:
+                # Extend audio with silence if needed
+                from moviepy.audio.AudioClip import AudioClip
+
+                silence_duration = video_duration - audio_clip.duration
+                silence = AudioClip(lambda t: [0, 0], duration=silence_duration)
+                audio_clip = concatenate_audioclips([audio_clip, silence])
+
         # Combine video with the new audio (replace existing audio)
         final_video = video_clip.set_audio(audio_clip)
-        
+
+        # Verify final duration matches original
+        final_duration = final_video.duration
+        if abs(final_duration - video_duration) > 0.1:
+            print(
+                f"Warning: Final video duration ({final_duration:.2f}s) doesn't match original ({video_duration:.2f}s)"
+            )
+
         # Generate output filename
         temp_dir = tempfile.gettempdir()
         output_filename = f"final_video_{uuid.uuid4().hex[:8]}.mp4"
         output_path = os.path.join(temp_dir, output_filename)
-        
+
         # Export the final video
         print(f"Exporting final video to: {output_path}")
         final_video.write_videofile(
             output_path,
-            codec='libx264',
-            audio_codec='aac',
+            codec="libx264",
+            audio_codec="aac",
             temp_audiofile=f"{output_path}_temp_audio.m4a",
             remove_temp=True,
             verbose=False,
-            logger=None  # Suppress MoviePy logs
+            logger=None,  # Suppress MoviePy logs
         )
-        
+
         # Clean up clips
         video_clip.close()
         audio_clip.close()
         final_video.close()
-        
+
+        # Verify the exported file has the correct duration
+        try:
+            exported_info = get_video_info(output_path)
+            exported_duration = exported_info["duration_seconds"]
+            print(
+                f"Exported video duration: {exported_duration:.2f}s (original: {video_duration:.2f}s)"
+            )
+
+            if (
+                abs(exported_duration - video_duration) > 0.5
+            ):  # Allow 0.5s tolerance for encoding
+                print(
+                    f"Warning: Exported video duration differs significantly from original"
+                )
+        except Exception as e:
+            print(f"Warning: Could not verify exported video duration: {e}")
+
         print(f"Successfully created final video: {output_path}")
         return output_path
-        
+
     except Exception as e:
         print(f"Error combining video and audio: {e}")
         raise
@@ -425,55 +586,61 @@ def attach_audio(video_path: str, audio_path: str, fade_out_duration: float = 1.
 def download_audio_from_supabase(audio_filename: str) -> str:
     """
     Downloads audio file from Supabase storage.
-    
+
     Args:
         audio_filename: The filename of the audio in Supabase storage
-        
+
     Returns:
         Local path to the downloaded audio file
     """
     try:
         # Get the file from Supabase storage
-        response = supabase.storage.from_(STORAGE_BUCKETS["music"]).download(audio_filename)
-        
+        response = supabase.storage.from_(STORAGE_BUCKETS["music"]).download(
+            audio_filename
+        )
+
         if not response:
             raise Exception(f"Failed to download audio file: {audio_filename}")
-        
+
         # Create temporary file
         temp_dir = tempfile.gettempdir()
-        temp_audio_path = os.path.join(temp_dir, f"temp_audio_{uuid.uuid4().hex[:8]}.wav")
-        
+        temp_audio_path = os.path.join(
+            temp_dir, f"temp_audio_{uuid.uuid4().hex[:8]}.wav"
+        )
+
         # Write the downloaded data to temporary file
         with open(temp_audio_path, "wb") as f:
             f.write(response)
-        
+
         print(f"Audio downloaded from Supabase to: {temp_audio_path}")
         return temp_audio_path
-        
+
     except Exception as e:
         print(f"Error downloading audio from Supabase: {e}")
         raise
 
 
-def combine_video_with_audio_from_supabase(video_id: str, audio_filename: str = None) -> Dict[str, any]:
+def combine_video_with_audio_from_supabase(
+    video_id: str, audio_filename: str = None
+) -> Dict[str, any]:
     """
     Downloads video and audio from Supabase, combines them, and uploads the result back.
-    
+
     Args:
         video_id: The UUID of the video in Supabase
         audio_filename: Optional specific audio filename from Supabase storage (if None, uses test file)
-        
+
     Returns:
         Dictionary containing final video information
     """
     temp_video_path = None
     temp_audio_path = None
     final_video_path = None
-    
+
     try:
         # Download video from Supabase
         temp_video_path = download_video_from_supabase(video_id)
-        
+
         # Handle audio source
         if audio_filename:
             # Download audio from Supabase storage
@@ -485,31 +652,37 @@ def combine_video_with_audio_from_supabase(video_id: str, audio_filename: str = 
             audio_path = os.path.join("test", test_audio_filename)
             if not os.path.exists(audio_path):
                 # Try absolute path
-                audio_path = os.path.join(os.path.dirname(__file__), "..", "test", test_audio_filename)
-            
+                audio_path = os.path.join(
+                    os.path.dirname(__file__), "..", "test", test_audio_filename
+                )
+
             if not os.path.exists(audio_path):
-                raise FileNotFoundError(f"Test audio file not found: {test_audio_filename}")
-            
+                raise FileNotFoundError(
+                    f"Test audio file not found: {test_audio_filename}"
+                )
+
             temp_audio_path = audio_path
             audio_filename = test_audio_filename
             print(f"Using test audio file: {audio_path}")
-        
+
         # Combine video with audio
         final_video_path = attach_audio(temp_video_path, temp_audio_path)
-        
+
         # Read final video data
         with open(final_video_path, "rb") as f:
             final_video_data = f.read()
-        
+
         # Generate filename for final video
         final_filename = f"final_video_{video_id}_{uuid.uuid4().hex[:8]}.mp4"
-        
+
         # Upload final video to Supabase
-        final_video_url = upload_final_video_to_supabase(final_video_data, final_filename)
-        
+        final_video_url = upload_final_video_to_supabase(
+            final_video_data, final_filename
+        )
+
         # Get video info
         final_video_info = get_video_info(final_video_path)
-        
+
         # Save final video metadata to database
         final_video_id = save_final_video_to_database(
             original_video_id=video_id,
@@ -517,22 +690,22 @@ def combine_video_with_audio_from_supabase(video_id: str, audio_filename: str = 
             file_url=final_video_url,
             audio_filename=audio_filename,
             final_duration=final_video_info["duration_seconds"],
-            file_size_mb=final_video_info["file_size_mb"]
+            file_size_mb=final_video_info["file_size_mb"],
         )
-        
+
         return {
             "final_video_id": final_video_id,
             "final_video_url": final_video_url,
             "filename": final_filename,
             "audio_used": audio_filename,
             "duration_seconds": final_video_info["duration_seconds"],
-            "file_size_mb": final_video_info["file_size_mb"]
+            "file_size_mb": final_video_info["file_size_mb"],
         }
-        
+
     except Exception as e:
         print(f"Error in combine_video_with_audio_from_supabase: {e}")
         raise
-        
+
     finally:
         # Clean up temporary files
         if temp_video_path and os.path.exists(temp_video_path):
@@ -541,15 +714,19 @@ def combine_video_with_audio_from_supabase(video_id: str, audio_filename: str = 
                 print(f"Cleaned up temporary video: {temp_video_path}")
             except:
                 pass
-        
-        if temp_audio_path and os.path.exists(temp_audio_path) and "temp_audio_" in temp_audio_path:
+
+        if (
+            temp_audio_path
+            and os.path.exists(temp_audio_path)
+            and "temp_audio_" in temp_audio_path
+        ):
             # Only delete if it's a downloaded file, not the original test file
             try:
                 os.remove(temp_audio_path)
                 print(f"Cleaned up temporary audio: {temp_audio_path}")
             except:
                 pass
-        
+
         if final_video_path and os.path.exists(final_video_path):
             try:
                 os.remove(final_video_path)
@@ -558,10 +735,15 @@ def combine_video_with_audio_from_supabase(video_id: str, audio_filename: str = 
                 pass
 
 
-video_processing_agent = Agent(
-    name="video_processing_agent",
+video_processor_agent = Agent(
+    name="video_processor_agent",
     model="gemini-2.0-flash",
     description="An agent responsible for all video and audio transformations.",
     instruction="You are a helpful agent who can process videos by extracting frames and attaching audio files.",
-    tools=[get_video_info, extract_frames, attach_audio, combine_video_with_audio_from_supabase],
-) 
+    tools=[
+        get_video_info,
+        extract_frames,
+        attach_audio,
+        combine_video_with_audio_from_supabase,
+    ],
+)
