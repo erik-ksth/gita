@@ -22,7 +22,7 @@ const VideoTrimModal = ({
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
   const videoRef = useRef(null);
 
-  const MAX_DURATION = 15; // 15 seconds maximum
+  const MAX_DURATION = 30; // 30 seconds maximum
 
   // Load FFmpeg on component mount
   useEffect(() => {
