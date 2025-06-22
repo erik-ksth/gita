@@ -1,42 +1,43 @@
-from adk.agent import Agent
-from adk.tool import tool
+import datetime
+from google.adk.agents import Agent
 
 
-class VideoProcessingAgent(Agent):
+def extract_frames(video_path: str, interval: int = 3) -> list[str]:
     """
-    An agent responsible for all video and audio transformations.
+    Extracts frames from a video file at a given interval.
+
+    Args:
+        video_path: The path to the video file.
+        interval: The interval in seconds at which to extract frames.
+
+    Returns:
+        A list of file paths to the extracted image frames.
     """
-    def __init__(self):
-        super().__init__()
+    # TODO: Implement frame extraction logic using a library like OpenCV.
+    print(f"Extracting frames from {video_path} at {interval}s intervals.")
+    return ["frame1.jpg", "frame2.jpg", "frame3.jpg"]
 
-    @tool
-    def extract_frames(self, video_path: str, interval: int = 3) -> list[str]:
-        """
-        Extracts frames from a video file at a given interval.
 
-        Args:
-            video_path: The path to the video file.
-            interval: The interval in seconds at which to extract frames.
+def attach_audio(video_path: str, audio_path: str) -> str:
+    """
+    Attaches an audio file to a video file.
 
-        Returns:
-            A list of file paths to the extracted image frames.
-        """
-        # TODO: Implement frame extraction logic using a library like OpenCV.
-        print(f"Extracting frames from {video_path} at {interval}s intervals.")
-        return ["frame1.jpg", "frame2.jpg", "frame3.jpg"]
+    Args:
+        video_path: The path to the original video file.
+        audio_path: The path to the audio file to attach.
 
-    @tool
-    def attach_audio(self, video_path: str, audio_path: str) -> str:
-        """
-        Attaches an audio file to a video file.
+    Returns:
+        The path to the final video file with audio.
+    """
+    # TODO: Implement audio attachment logic using a library like MoviePy or FFmpeg.
+    print(f"Attaching {audio_path} to {video_path}.")
+    return "final_video.mp4"
 
-        Args:
-            video_path: The path to the original video file.
-            audio_path: The path to the audio file to attach.
 
-        Returns:
-            The path to the final video file with audio.
-        """
-        # TODO: Implement audio attachment logic using a library like MoviePy or FFmpeg.
-        print(f"Attaching {audio_path} to {video_path}.")
-        return "final_video.mp4" 
+video_processing_agent = Agent(
+    name="video_processing_agent",
+    model="gemini-2.0-flash",
+    description="An agent responsible for all video and audio transformations.",
+    instruction="You are a helpful agent who can process videos by extracting frames and attaching audio files.",
+    tools=[extract_frames, attach_audio],
+) 

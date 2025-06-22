@@ -1,66 +1,37 @@
-from adk.agent import Sequential
-from .video_processing_agent import VideoProcessingAgent
-from .vision_analysis_agent import VisionAnalysisAgent
-from .music_generation_agent import MusicGenerationAgent
+from .video_processing_agent import video_processing_agent
+from .vision_analysis_agent import vision_analysis_agent
+from .music_generation_agent import music_generation_agent
 
-
-class OrchestratorAgent(Sequential):
+def run_video_to_music_workflow(video_path: str, vision_prompt: str, music_prompt: str):
     """
-    An orchestrator agent that manages the end-to-end workflow
-    from video processing to music generation.
+    Executes the entire video-to-music workflow.
+
+    Args:
+        video_path: Path to the input video.
+        vision_prompt: Custom prompt for the vision analysis.
+        music_prompt: Custom prompt for the music generation.
     """
-    def __init__(self):
-        video_agent = VideoProcessingAgent()
-        vision_agent = VisionAnalysisAgent()
-        music_agent = MusicGenerationAgent()
+    print("Starting workflow...")
 
-        # Define the sequence of operations.
-        # The ADK's Sequential agent will execute these steps in order.
-        # The actual implementation will require passing state between steps.
-        super().__init__(
-            agents=[
-                video_agent,
-                vision_agent,
-                music_agent,
-                video_agent, # Called again to attach audio
-            ]
-        )
+    # Step 1: Extract frames using the video processing agent
+    frames = extract_frames(video_path=video_path)
+    print(f"Frames extracted: {frames}")
 
-    def run(self, video_path: str, vision_prompt: str, music_prompt: str):
-        """
-        Executes the entire video-to-music workflow.
+    # Step 2: Analyze frames using the vision analysis agent
+    description = analyze_images(image_paths=frames, prompt=vision_prompt)
+    print(f"Scene description: {description}")
 
-        Args:
-            video_path: Path to the input video.
-            vision_prompt: Custom prompt for the vision analysis.
-            music_prompt: Custom prompt for the music generation.
-        """
-        # In a real implementation, the state would be managed and passed
-        # between agent calls. The `Sequential` agent facilitates this.
-        # This is a simplified representation of the flow.
+    # Step 3: Generate music using the music generation agent
+    music_file = generate_music(description=description, custom_prompt=music_prompt)
+    print(f"Music file generated: {music_file}")
 
-        print("Starting workflow...")
+    # Step 4: Attach audio to video
+    final_video = attach_audio(video_path=video_path, audio_path=music_file)
+    print(f"Final video created: {final_video}")
 
-        # Step 1: Extract frames
-        frames = self.agents[0].extract_frames(video_path=video_path)
-        print(f"Frames extracted: {frames}")
+    return final_video
 
-        # Step 2: Analyze frames
-        description = self.agents[1].analyze_images(
-            image_paths=frames, prompt=vision_prompt
-        )
-        print(f"Scene description: {description}")
-
-        # Step 3: Generate music
-        music_file = self.agents[2].generate_music(
-            description=description, custom_prompt=music_prompt
-        )
-        print(f"Music file generated: {music_file}")
-
-        # Step 4: Attach audio to video
-        final_video = self.agents[3].attach_audio(
-            video_path=video_path, audio_path=music_file
-        )
-        print(f"Final video created: {final_video}")
-
-        return final_video 
+# Import the functions from the agents
+from .video_processing_agent import extract_frames, attach_audio
+from .vision_analysis_agent import analyze_images
+from .music_generation_agent import generate_music 

@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
-from agents import OrchestratorAgent
+from agents import run_video_to_music_workflow
 
 app = FastAPI(title="Gita API", description="AI Music Generation API")
 
@@ -44,8 +44,7 @@ def root():
 @app.post("/generate-music-from-video", response_model=GenerateMusicResponse)
 def generate_music_from_video(request: GenerateMusicRequest):
     try:
-        orchestrator = OrchestratorAgent()
-        final_video_path = orchestrator.run(
+        final_video_path = run_video_to_music_workflow(
             video_path=request.video_path,
             vision_prompt=request.vision_prompt,
             music_prompt=request.music_prompt,
