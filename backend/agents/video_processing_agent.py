@@ -353,14 +353,11 @@ def attach_audio(video_path: str, audio_path: str, fade_out_duration: float = 1.
         video_clip = VideoFileClip(video_path)
         audio_clip = AudioFileClip(audio_path)
         
-        # Get video duration and dimensions
+        # Get video duration
         video_duration = video_clip.duration
         audio_duration = audio_clip.duration
-        original_width = video_clip.w
-        original_height = video_clip.h
         
         print(f"Video duration: {video_duration:.2f}s, Audio duration: {audio_duration:.2f}s")
-        print(f"Original video dimensions: {original_width}x{original_height}")
         
         # If audio is longer than video, trim it to video length
         if audio_duration > video_duration:
@@ -400,9 +397,8 @@ def attach_audio(video_path: str, audio_path: str, fade_out_duration: float = 1.
         output_filename = f"final_video_{uuid.uuid4().hex[:8]}.mp4"
         output_path = os.path.join(temp_dir, output_filename)
         
-        # Export the final video with original dimensions preserved
+        # Export the final video
         print(f"Exporting final video to: {output_path}")
-        print(f"Preserving original dimensions: {original_width}x{original_height}")
         final_video.write_videofile(
             output_path,
             codec='libx264',
@@ -410,9 +406,7 @@ def attach_audio(video_path: str, audio_path: str, fade_out_duration: float = 1.
             temp_audiofile=f"{output_path}_temp_audio.m4a",
             remove_temp=True,
             verbose=False,
-            logger=None,  # Suppress MoviePy logs
-            width=original_width,
-            height=original_height
+            logger=None  # Suppress MoviePy logs
         )
         
         # Clean up clips
