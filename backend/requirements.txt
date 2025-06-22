@@ -9,3 +9,4 @@ Pillow==11.2.1
 supabase==2.15.3
 moviepy==1.0.3
 requests==2.31.0
+deprecated==1.2.14
