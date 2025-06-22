@@ -1,4 +1,4 @@
-# Gita Backend - Supabase-Powered API
+# Gita Backend (FastAPI, Supabase, Google ADK)
 
 This is the backend API for Gita, an AI-powered music generation app that creates music from video content. The backend uses Supabase for storage and database operations.
 
