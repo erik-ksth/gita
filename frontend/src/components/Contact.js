@@ -3,11 +3,11 @@ import './Contact.css';
 
 function Contact() {
   const handleEmailClick = () => {
-    window.location.href = 'mailto:contact@gita.ai';
+    window.location.href = 'mailto:kaung.s.hein@sjsu.edu';
   };
 
   const handleGitHubClick = () => {
-    window.open('https://github.com/your-gita-repo', '_blank');
+    window.open('https://github.com/erik-ksth/gita.git', '_blank');
   };
 
   const handleLandingPageClick = () => {
@@ -37,7 +37,7 @@ function Contact() {
               <div className="contact-card" onClick={handleEmailClick}>
                 <div className="contact-icon">📧</div>
                 <h3>Email Us</h3>
-                <p className="contact-detail">contact@gita.ai</p>
+                {/* <p className="contact-detail">contact@gita.ai</p> */}
                 <p className="contact-description">
                   Send us an email for general inquiries, support, or collaboration opportunities.
                 </p>
@@ -49,7 +49,6 @@ function Contact() {
               <div className="contact-card" onClick={handleGitHubClick}>
                 <div className="contact-icon">🐙</div>
                 <h3>GitHub</h3>
-                <p className="contact-detail">github.com/your-gita-repo</p>
                 <p className="contact-description">
                   Check out our open-source code, contribute, or report issues on GitHub.
                 </p>
@@ -58,7 +57,7 @@ function Contact() {
                 </div>
               </div>
 
-              <div className="contact-card" onClick={handleLandingPageClick}>
+              {/* <div className="contact-card" onClick={handleLandingPageClick}>
                 <div className="contact-icon">🌐</div>
                 <h3>Landing Page</h3>
                 <p className="contact-detail">gita.ai</p>
@@ -68,11 +67,11 @@ function Contact() {
                 <div className="contact-action">
                   <span>Visit Website →</span>
                 </div>
-              </div>
+              </div> */}
             </div>
           </div>
 
-          <div className="contact-section">
+          {/* <div className="contact-section">
             <h2>Support & Resources</h2>
             <div className="support-grid">
               <div className="support-item">
@@ -92,9 +91,9 @@ function Contact() {
                 <p>Stay updated with the latest features and improvements</p>
               </div>
             </div>
-          </div>
+          </div> */}
 
-          <div className="contact-section">
+          {/* <div className="contact-section">
             <h2>Business Inquiries</h2>
             <div className="business-info">
               <p>
@@ -106,7 +105,7 @@ function Contact() {
                 Contact Business Team
               </button>
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>

@@ -1,7 +1,13 @@
 import React from 'react';
 import './About.css';
 
-function About() {
+function About({ onNavigate }) {
+  const handleStartCreating = () => {
+    if (onNavigate) {
+      onNavigate("home");
+    }
+  };
+
   return (
     <div className="about-page">
       <div className="about-container">
@@ -83,7 +89,7 @@ function About() {
             </div>
           </div>
 
-          <div className="about-section">
+          {/* <div className="about-section">
             <h2>Our Team</h2>
             <div className="team-grid">
               <div className="team-member">
@@ -102,7 +108,7 @@ function About() {
                 <p>Filmmakers and video production specialists</p>
               </div>
             </div>
-          </div>
+          </div> */}
 
           <div className="about-section">
             <h2>Get Started</h2>
@@ -111,7 +117,7 @@ function About() {
                 Ready to transform your videos into musical masterpieces? 
                 Upload your first video and experience the magic of AI-powered music generation.
               </p>
-              <button className="cta-button">
+              <button className="cta-button" onClick={handleStartCreating}>
                 Start Creating
               </button>
             </div>

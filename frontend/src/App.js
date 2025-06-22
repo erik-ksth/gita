@@ -120,7 +120,7 @@ function App() {
   const renderPageContent = () => {
     switch (currentPage) {
       case "about":
-        return <About />;
+        return <About onNavigate={navigateToPage} />;
       case "contact":
         return <Contact />;
       default:
