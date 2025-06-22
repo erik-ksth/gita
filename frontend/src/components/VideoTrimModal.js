@@ -20,6 +20,8 @@ const VideoTrimModal = ({
   const [trimmedVideoBlob, setTrimmedVideoBlob] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
+  const [ffmpegError, setFfmpegError] = useState(false);
+  const [loadingTimeout, setLoadingTimeout] = useState(false);
   const videoRef = useRef(null);
 
   const MAX_DURATION = 30; // 30 seconds maximum
@@ -29,18 +31,39 @@ const VideoTrimModal = ({
     const loadFFmpeg = async () => {
       try {
         if (!ffmpeg.loaded) {
-          await ffmpeg.load();
+          console.log("Loading FFmpeg...");
+
+          // Set a timeout for FFmpeg loading
+          const loadPromise = ffmpeg.load();
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("FFmpeg loading timeout")), 10000)
+          );
+
+          await Promise.race([loadPromise, timeoutPromise]);
           setFfmpegLoaded(true);
+          console.log("FFmpeg loaded successfully");
         }
       } catch (error) {
         console.error("Failed to load FFmpeg:", error);
+        setFfmpegLoaded(false);
+        setFfmpegError(true);
+        // Don't throw error, just set loaded to false so user can skip trimming
       }
     };
 
     if (isOpen) {
       loadFFmpeg();
+
+      // Show skip option after 5 seconds if FFmpeg hasn't loaded
+      const timeoutId = setTimeout(() => {
+        if (!ffmpegLoaded) {
+          setLoadingTimeout(true);
+        }
+      }, 5000);
+
+      return () => clearTimeout(timeoutId);
     }
-  }, [isOpen]);
+  }, [isOpen, ffmpegLoaded]);
 
   // Trim video using FFmpeg
   const trimVideo = async (videoFile, startTime, endTime) => {
@@ -141,7 +164,9 @@ const VideoTrimModal = ({
     }
 
     if (!ffmpegLoaded) {
-      alert("Video processor is still loading. Please wait.");
+      alert(
+        "Video processor is still loading. Please wait or use 'Skip Trimming' to upload the original video."
+      );
       return;
     }
 
@@ -166,6 +191,19 @@ const VideoTrimModal = ({
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleSkipTrimming = () => {
+    // Upload original file without trimming
+    const videoDurationToUse = Math.min(videoDuration, MAX_DURATION);
+
+    onUpload({
+      file: selectedFile, // Send original file
+      originalFileName: selectedFile.name,
+      trimStart: 0,
+      trimEnd: videoDurationToUse,
+      duration: videoDurationToUse,
+    });
   };
 
   const handleClose = () => {
@@ -201,6 +239,44 @@ const VideoTrimModal = ({
 
   if (!isOpen) return null;
 
+  // Show loading screen when uploading or processing
+  if (uploading || isProcessing) {
+    return (
+      <div className="modal-backdrop" onClick={handleModalBackdropClick}>
+        <div className="trim-modal">
+          <div className="modal-header">
+            <h2>Processing Video</h2>
+          </div>
+
+          <div className="modal-content">
+            <div className="processing-container">
+              <div className="processing-status">
+                <h3>
+                  {isProcessing
+                    ? "Trimming Video..."
+                    : "Uploading & Processing..."}
+                </h3>
+                <p>
+                  Please wait while we process your video. This may take a few
+                  minutes.
+                </p>
+              </div>
+
+              <div className="progress-container">
+                <div className="progress-bar">
+                  <div className="progress-fill"></div>
+                </div>
+                <div className="progress-text">
+                  {isProcessing ? "Trimming..." : "Processing..."}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="modal-backdrop" onClick={handleModalBackdropClick}>
       <div className="trim-modal">
@@ -227,8 +303,18 @@ const VideoTrimModal = ({
                 Original: {formatTime(videoDuration)} | Trimmed:{" "}
                 {formatTime(trimmedDuration)}
               </p>
-              {!ffmpegLoaded && (
-                <p className="info-message">Loading video processor...</p>
+              {!ffmpegLoaded && !ffmpegError && (
+                <p className="info-message">
+                  Loading video processor...{" "}
+                  {loadingTimeout &&
+                    "(Taking longer than expected - you can skip trimming)"}
+                </p>
+              )}
+              {ffmpegError && (
+                <p className="error-message">
+                  ⚠️ Video processor failed to load. You can skip trimming to
+                  upload the original video.
+                </p>
               )}
               {trimmedDuration > MAX_DURATION && (
                 <p className="error-message">
@@ -275,6 +361,20 @@ const VideoTrimModal = ({
           >
             Cancel
           </button>
+
+          {/* Show Skip Trimming button if FFmpeg failed to load after some time */}
+          {!ffmpegLoaded &&
+            videoDuration > 0 &&
+            (ffmpegError || loadingTimeout) && (
+              <button
+                onClick={handleSkipTrimming}
+                disabled={uploading || isProcessing}
+                className="skip-button"
+              >
+                {uploading ? "Uploading..." : "Skip Trimming & Upload"}
+              </button>
+            )}
+
           <button
             onClick={handleUpload}
             disabled={

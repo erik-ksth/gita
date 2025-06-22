@@ -6,7 +6,8 @@ import requests
 import uuid
 from typing import List, Dict
 from io import BytesIO
-from moviepy.editor import VideoFileClip, AudioFileClip
+from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_audioclips
+from moviepy.audio.fx.audio_fadeout import audio_fadeout
 from google.adk.agents import Agent
 from supabase_config import supabase, STORAGE_BUCKETS
 
@@ -352,11 +353,14 @@ def attach_audio(video_path: str, audio_path: str, fade_out_duration: float = 1.
         video_clip = VideoFileClip(video_path)
         audio_clip = AudioFileClip(audio_path)
         
-        # Get video duration
+        # Get video duration and dimensions
         video_duration = video_clip.duration
         audio_duration = audio_clip.duration
+        original_width = video_clip.w
+        original_height = video_clip.h
         
         print(f"Video duration: {video_duration:.2f}s, Audio duration: {audio_duration:.2f}s")
+        print(f"Original video dimensions: {original_width}x{original_height}")
         
         # If audio is longer than video, trim it to video length
         if audio_duration > video_duration:
@@ -368,14 +372,25 @@ def attach_audio(video_path: str, audio_path: str, fade_out_duration: float = 1.
             # Calculate how many times to loop
             loops_needed = int(video_duration / audio_duration) + 1
             audio_clips = [audio_clip] * loops_needed
-            from moviepy.editor import concatenate_audioclips
             looped_audio = concatenate_audioclips(audio_clips)
             audio_clip = looped_audio.subclip(0, video_duration)
         
         # Apply fade out effect to the audio
         if fade_out_duration > 0 and audio_clip.duration > fade_out_duration:
             print(f"Applying fade out effect ({fade_out_duration:.1f}s)")
-            audio_clip = audio_clip.fadeout(fade_out_duration)
+            try:
+                # Try the standard fadeout method first
+                audio_clip = audio_clip.fadeout(fade_out_duration)
+            except AttributeError:
+                # If fadeout method doesn't exist, use audio_fadeout function
+                print("fadeout method not available, using audio_fadeout function")
+                try:
+                    audio_clip = audio_fadeout(audio_clip, fade_out_duration)
+                except Exception as e:
+                    print(f"Warning: audio_fadeout failed ({e}), continuing without fade out")
+            except Exception as e:
+                # If any other error occurs, skip the fade out effect
+                print(f"Warning: Could not apply fade out effect ({e}), continuing without it")
         
         # Combine video with the new audio (replace existing audio)
         final_video = video_clip.set_audio(audio_clip)
@@ -385,8 +400,9 @@ def attach_audio(video_path: str, audio_path: str, fade_out_duration: float = 1.
         output_filename = f"final_video_{uuid.uuid4().hex[:8]}.mp4"
         output_path = os.path.join(temp_dir, output_filename)
         
-        # Export the final video
+        # Export the final video with original dimensions preserved
         print(f"Exporting final video to: {output_path}")
+        print(f"Preserving original dimensions: {original_width}x{original_height}")
         final_video.write_videofile(
             output_path,
             codec='libx264',
@@ -394,7 +410,9 @@ def attach_audio(video_path: str, audio_path: str, fade_out_duration: float = 1.
             temp_audiofile=f"{output_path}_temp_audio.m4a",
             remove_temp=True,
             verbose=False,
-            logger=None  # Suppress MoviePy logs
+            logger=None,  # Suppress MoviePy logs
+            width=original_width,
+            height=original_height
         )
         
         # Clean up clips
