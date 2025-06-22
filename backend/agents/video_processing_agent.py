@@ -1,8 +1,11 @@
 import datetime
 import os
 import cv2
+import tempfile
 from typing import List, Dict
+from io import BytesIO
 from google.adk.agents import Agent
+from supabase_config import supabase, STORAGE_BUCKETS
 
 
 def get_video_info(video_path: str) -> Dict[str, any]:
@@ -47,23 +50,88 @@ def get_video_info(video_path: str) -> Dict[str, any]:
     return video_info
 
 
-def extract_frames(video_path: str, num_frames: int = 5) -> List[str]:
+def upload_frame_to_supabase(frame_data: bytes, filename: str) -> str:
     """
-    Extracts exactly num_frames frames from a video file with equal time intervals.
+    Upload frame to Supabase storage.
+    
+    Args:
+        frame_data: The frame image data as bytes
+        filename: The filename for the frame
+        
+    Returns:
+        The public URL of the uploaded frame
+    """
+    try:
+        # Upload frame to Supabase storage
+        result = supabase.storage.from_(STORAGE_BUCKETS["frames"]).upload(
+            filename, frame_data, {"content-type": "image/jpeg"}
+        )
+        
+        if result:
+            # Get public URL
+            public_url = supabase.storage.from_(STORAGE_BUCKETS["frames"]).get_public_url(filename)
+            print(f"Frame uploaded to Supabase: {filename}")
+            return public_url
+        else:
+            raise Exception("Failed to upload frame to Supabase")
+            
+    except Exception as e:
+        print(f"Error uploading frame to Supabase: {e}")
+        raise
+
+
+def save_frame_to_database(video_id: str, frame_number: int, timestamp: float, 
+                          filename: str, file_path: str, file_size_kb: float) -> str:
+    """
+    Save frame metadata to Supabase database.
+    
+    Args:
+        video_id: The UUID of the parent video
+        frame_number: The frame number (0-indexed)
+        timestamp: The timestamp in seconds
+        filename: The frame filename
+        file_path: The Supabase storage path/URL
+        file_size_kb: The file size in KB
+        
+    Returns:
+        The frame UUID
+    """
+    try:
+        result = supabase.table("frames").insert({
+            "video_id": video_id,
+            "frame_number": frame_number,
+            "timestamp_seconds": timestamp,
+            "filename": filename,
+            "file_path": file_path,
+            "file_size_kb": file_size_kb
+        }).execute()
+        
+        if result.data:
+            frame_id = result.data[0]["id"]
+            print(f"Frame metadata saved to database: {filename} (ID: {frame_id})")
+            return frame_id
+        else:
+            raise Exception("Failed to save frame to database")
+            
+    except Exception as e:
+        print(f"Error saving frame to database: {e}")
+        raise
+
+
+def extract_frames(video_path: str, num_frames: int = 5, video_id: str = None) -> List[str]:
+    """
+    Extracts exactly num_frames frames from a video file and uploads to Supabase.
 
     Args:
         video_path: The path to the video file.
         num_frames: Number of frames to extract (default: 5).
+        video_id: The UUID of the video in the database.
 
     Returns:
-        A list of file paths to the extracted image frames.
+        A list of public URLs to the extracted frames in Supabase.
     """
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"Video file not found: {video_path}")
-    
-    # Create frames directory if it doesn't exist
-    frames_dir = os.path.join(os.path.dirname(video_path), "frames")
-    os.makedirs(frames_dir, exist_ok=True)
     
     # Open the video
     cap = cv2.VideoCapture(video_path)
@@ -84,7 +152,7 @@ def extract_frames(video_path: str, num_frames: int = 5) -> List[str]:
     # Calculate time interval between frames
     time_interval = duration / num_frames if num_frames > 1 else duration
     
-    frame_paths = []
+    frame_urls = []
     extracted_count = 0
     
     print(f"Extracting {num_frames} frames from {video_path} (duration: {duration:.2f}s, interval: {time_interval:.2f}s)")
@@ -107,21 +175,42 @@ def extract_frames(video_path: str, num_frames: int = 5) -> List[str]:
         if ret:
             # Create filename with timestamp
             filename = f"frame_{extracted_count:04d}_t{timestamp:.2f}s.jpg"
-            frame_path = os.path.join(frames_dir, filename)
             
-            # Save the frame
-            cv2.imwrite(frame_path, frame)
-            frame_paths.append(frame_path)
-            extracted_count += 1
+            # Convert frame to bytes
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame_bytes = buffer.tobytes()
             
-            print(f"Extracted frame {extracted_count}: {filename}")
+            # Upload frame to Supabase
+            try:
+                public_url = upload_frame_to_supabase(frame_bytes, filename)
+                frame_urls.append(public_url)
+                
+                # Save frame metadata to database (if video_id provided)
+                if video_id:
+                    file_size_kb = len(frame_bytes) / 1024
+                    save_frame_to_database(
+                        video_id=video_id,
+                        frame_number=extracted_count,
+                        timestamp=timestamp,
+                        filename=filename,
+                        file_path=public_url,
+                        file_size_kb=file_size_kb
+                    )
+                
+                extracted_count += 1
+                print(f"Extracted frame {extracted_count}: {filename}")
+                
+            except Exception as e:
+                print(f"Error processing frame {extracted_count}: {e}")
+                continue
+                
         else:
             print(f"Warning: Could not extract frame at {timestamp:.2f}s")
     
     cap.release()
     
-    print(f"Successfully extracted {len(frame_paths)} frames from {video_path}")
-    return frame_paths
+    print(f"Successfully extracted {len(frame_urls)} frames and uploaded to Supabase")
+    return frame_urls
 
 
 def attach_audio(video_path: str, audio_path: str) -> str:
