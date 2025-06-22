@@ -1,81 +1,134 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import VideoTrimModal from "./components/VideoTrimModal";
 import "./App.css";
 
 function App() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [musicResults, setMusicResults] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [showTrimModal, setShowTrimModal] = useState(false);
+  const fileInputRef = useRef(null);
 
-  const searchMusic = async () => {
-    if (!searchTerm.trim()) return;
+  const handleFileSelect = (file) => {
+    if (file && file.type.startsWith("video/")) {
+      setSelectedFile(file);
+      setShowTrimModal(true);
+    } else {
+      alert("Please select a valid video file.");
+    }
+  };
 
-    setLoading(true);
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files[0];
+    handleFileSelect(file);
+  };
+
+  const handleFileInputChange = (e) => {
+    const file = e.target.files[0];
+    handleFileSelect(file);
+  };
+
+  const handleBrowseClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleCloseModal = () => {
+    setShowTrimModal(false);
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleUpload = async (trimData) => {
+    setUploading(true);
     try {
-      // This will call your Python backend API
-      const response = await fetch("http://localhost:8000/search-music", {
+      const formData = new FormData();
+      formData.append("video", trimData.file);
+      formData.append("trimStart", trimData.trimStart);
+      formData.append("trimEnd", trimData.trimEnd);
+      formData.append("duration", trimData.duration);
+
+      const response = await fetch("http://localhost:8000/upload-video", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ query: searchTerm }),
+        body: formData,
       });
 
-      const data = await response.json();
-      setMusicResults(data.results || []);
+      if (response.ok) {
+        const result = await response.json();
+        alert("Video uploaded and trimmed successfully!");
+        handleCloseModal();
+      } else {
+        throw new Error("Upload failed");
+      }
     } catch (error) {
-      console.error("Error searching music:", error);
-      setMusicResults([]);
+      console.error("Error uploading video:", error);
+      alert("Failed to upload video. Please try again.");
     } finally {
-      setLoading(false);
+      setUploading(false);
     }
   };
 
   return (
     <div className="App">
       <header className="App-header">
-        <h1>🎵 Gita</h1>
-        <p>Find Copyright-Free Music for Your Videos</p>
+        <h1>🎬 Gita</h1>
+        <p>Upload & Trim Your Video (Max 15s)</p>
       </header>
 
       <main className="App-main">
-        <div className="search-container">
-          <input
-            type="text"
-            placeholder="Search for music (e.g., 'upbeat', 'calm', 'electronic')"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && searchMusic()}
-            className="search-input"
-          />
-          <button
-            onClick={searchMusic}
-            disabled={loading}
-            className="search-button"
+        <div className="upload-container">
+          <div
+            className={`upload-area ${isDragOver ? "drag-over" : ""}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
-            {loading ? "Searching..." : "Search"}
-          </button>
-        </div>
-
-        <div className="results-container">
-          {musicResults.length > 0 ? (
-            musicResults.map((track, index) => (
-              <div key={index} className="music-card">
-                <h3>{track.title}</h3>
-                <p>Artist: {track.artist}</p>
-                <p>Genre: {track.genre}</p>
-                <p>Duration: {track.duration}</p>
-                <button className="download-button">Download</button>
+            <div className="upload-content">
+              <div className="upload-prompt">
+                <div className="upload-icon">📁</div>
+                <h3>Drop your video here</h3>
+                <p>or click to browse</p>
+                <button
+                  className="browse-button"
+                  onClick={handleBrowseClick}
+                  type="button"
+                >
+                  Choose File
+                </button>
               </div>
-            ))
-          ) : (
-            <p className="no-results">
-              {loading
-                ? "Searching for music..."
-                : "Search for copyright-free music above"}
-            </p>
-          )}
+            </div>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="video/*"
+            onChange={handleFileInputChange}
+            style={{ display: "none" }}
+          />
         </div>
       </main>
+
+      <VideoTrimModal
+        isOpen={showTrimModal}
+        onClose={handleCloseModal}
+        selectedFile={selectedFile}
+        onUpload={handleUpload}
+        uploading={uploading}
+      />
     </div>
   );
 }
