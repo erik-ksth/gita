@@ -410,41 +410,80 @@ def attach_audio(video_path: str, audio_path: str, fade_out_duration: float = 1.
         raise
 
 
+def download_audio_from_supabase(audio_filename: str) -> str:
+    """
+    Downloads audio file from Supabase storage.
+    
+    Args:
+        audio_filename: The filename of the audio in Supabase storage
+        
+    Returns:
+        Local path to the downloaded audio file
+    """
+    try:
+        # Get the file from Supabase storage
+        response = supabase.storage.from_(STORAGE_BUCKETS["music"]).download(audio_filename)
+        
+        if not response:
+            raise Exception(f"Failed to download audio file: {audio_filename}")
+        
+        # Create temporary file
+        temp_dir = tempfile.gettempdir()
+        temp_audio_path = os.path.join(temp_dir, f"temp_audio_{uuid.uuid4().hex[:8]}.wav")
+        
+        # Write the downloaded data to temporary file
+        with open(temp_audio_path, "wb") as f:
+            f.write(response)
+        
+        print(f"Audio downloaded from Supabase to: {temp_audio_path}")
+        return temp_audio_path
+        
+    except Exception as e:
+        print(f"Error downloading audio from Supabase: {e}")
+        raise
+
+
 def combine_video_with_audio_from_supabase(video_id: str, audio_filename: str = None) -> Dict[str, any]:
     """
-    Downloads video from Supabase, combines it with audio, and uploads the result back.
+    Downloads video and audio from Supabase, combines them, and uploads the result back.
     
     Args:
         video_id: The UUID of the video in Supabase
-        audio_filename: Optional specific audio filename (defaults to the test audio file)
+        audio_filename: Optional specific audio filename from Supabase storage (if None, uses test file)
         
     Returns:
         Dictionary containing final video information
     """
     temp_video_path = None
+    temp_audio_path = None
     final_video_path = None
     
     try:
-        # Set default audio file if not specified
-        if not audio_filename:
-            audio_filename = "_Royalty Free Music Rainy Thoughts - Relaxing Lofi Hip Hop Music_160k.mp3"
-        
-        # Find the audio file path
-        audio_path = os.path.join("test", audio_filename)
-        if not os.path.exists(audio_path):
-            # Try absolute path
-            audio_path = os.path.join(os.path.dirname(__file__), "..", "test", audio_filename)
-        
-        if not os.path.exists(audio_path):
-            raise FileNotFoundError(f"Audio file not found: {audio_filename}")
-        
-        print(f"Using audio file: {audio_path}")
-        
         # Download video from Supabase
         temp_video_path = download_video_from_supabase(video_id)
         
+        # Handle audio source
+        if audio_filename:
+            # Download audio from Supabase storage
+            temp_audio_path = download_audio_from_supabase(audio_filename)
+            print(f"Using generated music from Supabase: {audio_filename}")
+        else:
+            # Use default test audio file (fallback)
+            test_audio_filename = "_Royalty Free Music Rainy Thoughts - Relaxing Lofi Hip Hop Music_160k.mp3"
+            audio_path = os.path.join("test", test_audio_filename)
+            if not os.path.exists(audio_path):
+                # Try absolute path
+                audio_path = os.path.join(os.path.dirname(__file__), "..", "test", test_audio_filename)
+            
+            if not os.path.exists(audio_path):
+                raise FileNotFoundError(f"Test audio file not found: {test_audio_filename}")
+            
+            temp_audio_path = audio_path
+            audio_filename = test_audio_filename
+            print(f"Using test audio file: {audio_path}")
+        
         # Combine video with audio
-        final_video_path = attach_audio(temp_video_path, audio_path)
+        final_video_path = attach_audio(temp_video_path, temp_audio_path)
         
         # Read final video data
         with open(final_video_path, "rb") as f:
@@ -488,6 +527,14 @@ def combine_video_with_audio_from_supabase(video_id: str, audio_filename: str = 
             try:
                 os.remove(temp_video_path)
                 print(f"Cleaned up temporary video: {temp_video_path}")
+            except:
+                pass
+        
+        if temp_audio_path and os.path.exists(temp_audio_path) and "temp_audio_" in temp_audio_path:
+            # Only delete if it's a downloaded file, not the original test file
+            try:
+                os.remove(temp_audio_path)
+                print(f"Cleaned up temporary audio: {temp_audio_path}")
             except:
                 pass
         

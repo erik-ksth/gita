@@ -227,19 +227,23 @@ All agents now use a **video_id-based approach** for consistency and data isolat
 - **Groq Model**: `meta-llama/llama-4-scout-17b-16e-instruct`
 - **Output**: Returns detailed music generation prompt from Groq analysis
 
-### 🎵 **Music Generation Agent**
+### 🎵 **Music Generation Agent** (Lyria Integration)
 
-- **Input**: Generated music prompt from vision analysis
-- **Functions**: `generate_music()`
-- **Data Access**: Uses Google's Lyria model for music generation
-- **Output**: Returns generated music file path
+- **Input**: `video_id`, optional `custom_music_prompt`
+- **Functions**: `generate_music_from_video_id()`, `create_music_generation_record()`, `update_music_generation_record()`
+- **Data Access**: Fetches vision analysis from database, saves generation metadata to `music_generations` table
+- **Google Cloud**: Uses Lyria model for music generation
+- **Storage**: Uploads generated music to Supabase storage
+- **Tracking**: Full generation history with status tracking (pending → generating → completed/failed)
+- **Output**: Returns Supabase URL of generated music file
 
-### 🎭 **Orchestrator Agent**
+### 🎬 **Orchestrator Agent** (Workflow Management)
 
-- **Input**: `video_id`, user prompts
+- **Input**: `video_id`, `vision_prompt`, `music_prompt`
 - **Functions**: `run_video_to_music_workflow()`
-- **Data Access**: Coordinates all agents using video_id
-- **Output**: Final video URL with music
+- **Data Access**: Coordinates all agents using video_id, updates processing status
+- **Workflow**: Vision analysis → Music generation → Video combination → Status update
+- **Output**: Returns final video URL with music
 
 ## Groq Vision Analysis
 
@@ -319,6 +323,45 @@ Create these buckets in your Supabase Storage dashboard:
 - music
 - final-videos
 
-## API Documentation
+## 🚀 **API Endpoints**
+
+### Core Endpoints
+
+- `POST /upload-video` - Upload video with automatic processing
+- `POST /generate-music-from-video` - Generate music for uploaded video
+- `GET /list-videos` - List all uploaded videos with metadata
+- `GET /list-music-generations/{video_id}` - List all music generation records for a video
+- `GET /health` - Health check endpoint
+
+### API Documentation
 
 Interactive API documentation is available at `/docs` when running the server.
+
+## 🔄 **Video-to-Music Workflow**
+
+### Current Architecture (Video ID-based)
+
+```
+1. Video Upload → Supabase Storage + Database Entry
+2. Frame Extraction → 5 frames → Supabase Storage
+3. Groq Vision Analysis → Analysis stored in database
+4. AUTOMATIC Music Generation → Fetches analysis from DB → Lyria → Supabase Storage
+5. AUTOMATIC Video Combination → Downloads video + music → Combines → Final video
+6. Status Updates → Processing status tracked throughout
+```
+
+### Processing Status Flow
+
+```
+uploaded → processing → analyzed → music_generating → music_completed → combining_video → completed
+                                                    → music_failed
+                                                                       → combination_failed
+```
+
+### Key Functions
+
+- `upload_video()` - Handles complete automatic workflow: upload → frames → analysis → music → final video
+- `analyze_video_frames_from_supabase(video_id)` - Groq vision analysis (automatic)
+- `generate_music_from_video_id(video_id)` - Music generation using stored analysis (automatic)
+- `combine_video_with_audio_from_supabase(video_id, audio_filename)` - Video combination (automatic)
+- `run_video_to_music_workflow(video_id)` - Legacy workflow for manual final video creation

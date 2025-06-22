@@ -7,8 +7,9 @@ import shutil
 import uuid
 from typing import Optional, List
 from agents import run_video_to_music_workflow
-from agents.video_processing_agent import extract_frames, get_video_info
+from agents.video_processing_agent import extract_frames, get_video_info, combine_video_with_audio_from_supabase
 from agents.vision_analysis_agent import analyze_video_frames_from_supabase
+from agents.music_generation_agent import generate_music_from_video_id
 from supabase_config import supabase, STORAGE_BUCKETS
 
 app = FastAPI(title="Gita API", description="AI Music Generation API")
@@ -54,10 +55,18 @@ class VideoUploadResponse(BaseModel):
     trim_info: dict
     video_info: dict
     extracted_frames: List[str]
+    music_generated: bool
+    music_url: Optional[str] = None
+    final_video_created: bool
+    final_video_url: Optional[str] = None
 
 
 class VideoListResponse(BaseModel):
     videos: List[dict]
+
+
+class MusicGenerationListResponse(BaseModel):
+    music_generations: List[dict]
 
 
 def upload_video_to_supabase(video_data: bytes, filename: str) -> str:
@@ -170,7 +179,7 @@ def save_vision_analysis_to_database(video_id: str, analysis_result: str) -> str
     try:
         result = supabase.table("videos").update({
             "vision_analysis": analysis_result,
-            "processing_status": "analyzed"
+            "processing_status": "analyzed"  # Will be updated to "music_generating" if music generation starts
         }).eq("id", video_id).execute()
         
         if result.data:
@@ -185,11 +194,33 @@ def save_vision_analysis_to_database(video_id: str, analysis_result: str) -> str
         raise
 
 
+def update_video_status(video_id: str, status: str) -> None:
+    """
+    Update video processing status.
+    
+    Args:
+        video_id: The UUID of the video
+        status: The new processing status
+    """
+    try:
+        result = supabase.table("videos").update({
+            "processing_status": status
+        }).eq("id", video_id).execute()
+        
+        if result.data:
+            print(f"Updated video {video_id} status to: {status}")
+        else:
+            print(f"Warning: Could not update video {video_id} status")
+            
+    except Exception as e:
+        print(f"Error updating video status: {e}")
+
+
 @app.get("/", response_model=dict)
 def root():
     return {
         "message": "Gita API is running!",
-        "endpoints": ["/health", "/upload-video", "/list-videos", "/generate-music-from-video"],
+        "endpoints": ["/health", "/upload-video", "/list-videos", "/list-music-generations/{video_id}", "/generate-music-from-video"],
         "docs": "/docs",
     }
 
@@ -291,6 +322,7 @@ async def upload_video(
         
         # Automatically analyze the extracted frames
         print("Starting automatic vision analysis with Groq...")
+        vision_analysis_completed = False
         try:
             vision_analysis_result = analyze_video_frames_from_supabase(video_id, visionPrompt)
             print(f"Vision analysis completed: {vision_analysis_result[:100]}...")
@@ -298,19 +330,96 @@ async def upload_video(
             # Save the analysis result to the database
             save_vision_analysis_to_database(video_id, vision_analysis_result)
             print("Vision analysis saved to database")
+            vision_analysis_completed = True
             
         except Exception as analysis_error:
             print(f"Warning: Vision analysis failed: {analysis_error}")
             # Continue with upload even if analysis fails
         
+        # Automatically generate music after successful vision analysis
+        music_generation_completed = False
+        music_url = None
+        if vision_analysis_completed:
+            print("Starting automatic music generation...")
+            update_video_status(video_id, "music_generating")
+            
+            try:
+                music_url = generate_music_from_video_id(video_id, custom_music_prompt=None)
+                print(f"Music generation completed: {music_url}")
+                music_generation_completed = True
+                update_video_status(video_id, "music_completed")
+                
+            except Exception as music_error:
+                print(f"Warning: Music generation failed: {music_error}")
+                update_video_status(video_id, "music_failed")
+                # Continue with upload even if music generation fails
+        
+        # Automatically combine video with music after successful music generation
+        final_video_completed = False
+        final_video_url = None
+        if music_generation_completed and music_url:
+            print("Starting automatic video combination with generated music...")
+            update_video_status(video_id, "combining_video")
+            
+            try:
+                # Extract filename from music URL
+                music_filename = music_url.split('/')[-1] if music_url else None
+                
+                # Combine video with generated music
+                final_video_info = combine_video_with_audio_from_supabase(
+                    video_id=video_id,
+                    audio_filename=music_filename
+                )
+                
+                final_video_url = final_video_info["final_video_url"]
+                print(f"Video combination completed: {final_video_url}")
+                final_video_completed = True
+                update_video_status(video_id, "completed")
+                
+                # Update the music generation record with the final video path
+                try:
+                    from agents.music_generation_agent import get_music_generations_for_video, update_music_generation_record
+                    
+                    # Get the most recent music generation for this video
+                    music_generations = get_music_generations_for_video(video_id)
+                    if music_generations:
+                        latest_generation = music_generations[0]  # Most recent first
+                        update_music_generation_record(
+                            latest_generation["id"],
+                            final_video_path=final_video_url
+                        )
+                        print(f"Updated music generation record with final video path")
+                except Exception as update_error:
+                    print(f"Warning: Could not update music generation record with final video: {update_error}")
+                
+            except Exception as combination_error:
+                print(f"Warning: Video combination failed: {combination_error}")
+                update_video_status(video_id, "combination_failed")
+                # Continue with upload even if video combination fails
+        
+        # Create response message based on what was completed
+        message_parts = [f"Video uploaded to Supabase successfully, {len(extracted_frames)} frames extracted"]
+        if vision_analysis_completed:
+            message_parts.append("vision analysis completed")
+        if music_generation_completed:
+            message_parts.append("music generated automatically")
+        if final_video_completed:
+            message_parts.append("final video with music created")
+        
+        response_message = ", ".join(message_parts)
+        
         return VideoUploadResponse(
-            message=f"Video uploaded to Supabase successfully, {len(extracted_frames)} frames extracted, and vision analysis completed",
+            message=response_message,
             filename=unique_filename,
             file_path=video_url,  # Return Supabase URL instead of local path
             video_id=video_id,
             trim_info=trim_info,
             video_info=video_info,
-            extracted_frames=extracted_frames
+            extracted_frames=extracted_frames,
+            music_generated=music_generation_completed,
+            music_url=music_url,
+            final_video_created=final_video_completed,
+            final_video_url=final_video_url
         )
         
     except Exception as e:
@@ -358,6 +467,37 @@ def list_videos():
     except Exception as e:
         print(f"Error listing videos: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list videos: {str(e)}")
+
+
+@app.get("/list-music-generations/{video_id}", response_model=MusicGenerationListResponse)
+def list_music_generations(video_id: str):
+    """
+    Get all music generation records for a specific video.
+    """
+    try:
+        result = supabase.table("music_generations").select("*").eq("video_id", video_id).order("created_at", desc=True).execute()
+        
+        music_generations = []
+        if result.data:
+            for generation in result.data:
+                music_generations.append({
+                    "id": generation["id"],
+                    "video_id": generation["video_id"],
+                    "vision_prompt": generation.get("vision_prompt"),
+                    "music_prompt": generation.get("music_prompt"),
+                    "music_file_path": generation.get("music_file_path"),
+                    "music_file_size_mb": generation.get("music_file_size_mb"),
+                    "final_video_path": generation.get("final_video_path"),
+                    "generation_status": generation.get("generation_status"),
+                    "created_at": generation["created_at"],
+                    "updated_at": generation.get("updated_at")
+                })
+        
+        return MusicGenerationListResponse(music_generations=music_generations)
+        
+    except Exception as e:
+        print(f"Error listing music generations for video {video_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list music generations: {str(e)}")
 
 
 if __name__ == "__main__":

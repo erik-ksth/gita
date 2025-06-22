@@ -1,7 +1,7 @@
 import os
 from .video_processing_agent import video_processing_agent, download_video_from_supabase, combine_video_with_audio_from_supabase
 from .vision_analysis_agent import vision_analysis_agent, analyze_video_frames_from_supabase
-from .music_generation_agent import music_generation_agent
+from .music_generation_agent import music_generation_agent, generate_music_from_video_id
 from supabase_config import supabase
 
 def run_video_to_music_workflow(video_id: str, vision_prompt: str, music_prompt: str):
@@ -15,9 +15,9 @@ def run_video_to_music_workflow(video_id: str, vision_prompt: str, music_prompt:
     """
     print(f"Starting workflow for video ID: {video_id}")
 
-    # Step 1: Get the pre-computed vision analysis from the database
+    # Step 1: Verify video exists and check analysis status
     try:
-        result = supabase.table("videos").select("vision_analysis, processing_status").eq("id", video_id).execute()
+        result = supabase.table("videos").select("vision_analysis, processing_status, filename").eq("id", video_id).execute()
         
         if not result.data:
             raise Exception(f"Video with ID {video_id} not found in database")
@@ -25,49 +25,86 @@ def run_video_to_music_workflow(video_id: str, vision_prompt: str, music_prompt:
         video_data = result.data[0]
         stored_analysis = video_data.get("vision_analysis")
         processing_status = video_data.get("processing_status")
+        filename = video_data.get("filename", "unknown")
         
-        if stored_analysis:
-            # Use the pre-computed analysis result
-            print(f"Using pre-computed vision analysis from database")
-            description = stored_analysis
-        else:
-            # Fallback: Analyze frames using video_id if no stored analysis exists
+        print(f"Video found: {filename} (Status: {processing_status})")
+        
+        if not stored_analysis:
+            # If no analysis exists, run it now
             print("No pre-computed analysis found, analyzing frames now...")
-            description = analyze_video_frames_from_supabase(video_id)
+            stored_analysis = analyze_video_frames_from_supabase(video_id, vision_prompt)
             
             # Save the analysis result for future use
             try:
                 supabase.table("videos").update({
-                    "vision_analysis": description,
+                    "vision_analysis": stored_analysis,
                     "processing_status": "analyzed"
                 }).eq("id", video_id).execute()
                 print("Saved vision analysis to database for future use")
             except Exception as save_error:
                 print(f"Warning: Could not save analysis result: {save_error}")
+        else:
+            print(f"Using pre-computed vision analysis from database")
             
     except Exception as e:
         print(f"Error retrieving video data: {e}")
         raise
 
-    print(f"Scene description: {description}")
+    print(f"Vision analysis available for music generation")
 
-    # Step 2: Generate music using the music generation agent
-    music_file = generate_music(description=description, custom_prompt=music_prompt)
-    print(f"Music file generated: {music_file}")
+    # Step 2: Generate music using the video_id-based approach
+    try:
+        print("Generating music using vision analysis...")
+        music_url = generate_music_from_video_id(
+            video_id=video_id, 
+            custom_music_prompt=music_prompt if music_prompt else None
+        )
+        print(f"Music generated and uploaded to Supabase: {music_url}")
+        
+    except Exception as e:
+        print(f"Error generating music: {e}")
+        raise
 
     # Step 3: Combine video with audio using Supabase workflow
     try:
-        # Extract just the filename from the music file path for the audio parameter
-        audio_filename = os.path.basename(music_file) if music_file else None
+        # Extract filename from the music URL for the audio parameter
+        music_filename = music_url.split('/')[-1] if music_url else None
         
         # Use the existing Supabase function to combine video and audio
         final_video_info = combine_video_with_audio_from_supabase(
             video_id=video_id, 
-            audio_filename=audio_filename
+            audio_filename=music_filename
         )
         
-        print(f"Final video created and uploaded to Supabase: {final_video_info['final_video_url']}")
-        return final_video_info["final_video_url"]
+        final_video_url = final_video_info["final_video_url"]
+        print(f"Final video created and uploaded to Supabase: {final_video_url}")
+        
+        # Update the latest music generation record with the final video path
+        try:
+            from .music_generation_agent import get_music_generations_for_video, update_music_generation_record
+            
+            # Get the most recent music generation for this video
+            music_generations = get_music_generations_for_video(video_id)
+            if music_generations:
+                latest_generation = music_generations[0]  # Most recent first
+                update_music_generation_record(
+                    latest_generation["id"],
+                    final_video_path=final_video_url
+                )
+                print(f"Updated music generation record with final video path")
+        except Exception as update_error:
+            print(f"Warning: Could not update music generation record with final video: {update_error}")
+        
+        # Update video status to completed
+        try:
+            supabase.table("videos").update({
+                "processing_status": "completed"
+            }).eq("id", video_id).execute()
+            print("Updated video status to completed")
+        except Exception as status_error:
+            print(f"Warning: Could not update video status: {status_error}")
+        
+        return final_video_url
         
     except Exception as e:
         print(f"Error combining video with audio: {e}")
@@ -101,7 +138,7 @@ def run_video_to_music_workflow_legacy(video_path: str, vision_prompt: str, musi
     description = analyze_images_from_supabase(image_paths=frames)
     print(f"Scene description: {description}")
 
-    # Step 3: Generate music using the music generation agent
+    # Step 3: Generate music using the legacy music generation
     music_file = generate_music(description=description, custom_prompt=music_prompt)
     print(f"Music file generated: {music_file}")
 
@@ -114,4 +151,4 @@ def run_video_to_music_workflow_legacy(video_path: str, vision_prompt: str, musi
 # Import the functions from the agents
 from .video_processing_agent import extract_frames, attach_audio
 from .vision_analysis_agent import analyze_video_frames_from_supabase
-from .music_generation_agent import generate_music 
+from .music_generation_agent import generate_music  # Keep legacy function for backward compatibility 
