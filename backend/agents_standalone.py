@@ -95,9 +95,9 @@ if __name__ == "__main__":
     print("=== Google Music Generation Agent ===")
 
     # Example 1: Smooth jazz
-    print("\n1. Generating smooth jazz...")
-    prompt = "Smooth, atmospheric jazz. Moderate tempo, rich harmonies. Featuring mellow brass"
-    negative_prompt = "fast"
+    print("\n1. Generating music ...")
+    prompt = "A lively and energetic (mood) electronic dance music (EDM) track (genre/style) featuring prominent synthesizers (instrumentation) and driving basslines (instrumentation/arrangement). Upbeat tempo (tempo) with a deep, resonant kick drum (instrumentation/arrangement) and a bright, neon-lit ambiance (ambiance/production). Starts with a catchy synth riff, then builds up with layered percussion and filtered vocal samples (arrangement)."
+    negative_prompt = ""
     sample_count = 1
 
     try:
@@ -113,17 +113,17 @@ if __name__ == "__main__":
         print(f"Error generating jazz: {e}")
 
     # Example 2: Dramatic dance symphony
-    print("\n2. Generating dramatic dance symphony...")
-    prompt = "Dramatic dance symphony"
-    negative_prompt = ""
-    seed = 111
+    # print("\n2. Generating dramatic dance symphony...")
+    # prompt = "Dramatic dance symphony"
+    # negative_prompt = ""
+    # seed = 111
 
-    try:
-        music = generate_music(
-            {"prompt": prompt, "negative_prompt": negative_prompt, "seed": seed}
-        )
-        save_audio_to_file(music, "dramatic_symphony")
-    except Exception as e:
-        print(f"Error generating symphony: {e}")
+    # try:
+    #     music = generate_music(
+    #         {"prompt": prompt, "negative_prompt": negative_prompt, "seed": seed}
+    #     )
+    #     save_audio_to_file(music, "dramatic_symphony")
+    # except Exception as e:
+    #     print(f"Error generating symphony: {e}")
 
     print("\n=== Generation complete ===")
