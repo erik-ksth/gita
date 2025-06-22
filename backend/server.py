@@ -4,8 +4,9 @@ from pydantic import BaseModel
 import uvicorn
 import os
 import shutil
-from typing import Optional
+from typing import Optional, List
 from agents import run_video_to_music_workflow
+from agents.video_processing_agent import extract_frames, get_video_info
 
 app = FastAPI(title="Gita API", description="AI Music Generation API")
 
@@ -42,6 +43,8 @@ class VideoUploadResponse(BaseModel):
     filename: str
     file_path: str
     trim_info: dict
+    video_info: dict
+    extracted_frames: List[str]
 
 
 @app.get("/", response_model=dict)
@@ -95,6 +98,17 @@ async def upload_video(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(video.file, buffer)
         
+        print(f"Video uploaded successfully: {file_path}")
+        
+        # Get video information
+        video_info = get_video_info(file_path)
+        print(f"Video info: {video_info}")
+        
+        # Automatically extract frames (exactly 5 frames with equal intervals)
+        print("Starting automatic frame extraction...")
+        extracted_frames = extract_frames(file_path, num_frames=5)
+        print(f"Extracted {len(extracted_frames)} frames automatically")
+        
         # Prepare trim info
         trim_info = {
             "originalFileName": originalFileName,
@@ -104,14 +118,17 @@ async def upload_video(
         }
         
         return VideoUploadResponse(
-            message="Video uploaded successfully",
+            message=f"Video uploaded successfully and {len(extracted_frames)} frames extracted",
             filename=unique_filename,
             file_path=file_path,
-            trim_info=trim_info
+            trim_info=trim_info,
+            video_info=video_info,
+            extracted_frames=extracted_frames
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload video: {str(e)}")
+        print(f"Error during upload/processing: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload/process video: {str(e)}")
 
 
 if __name__ == "__main__":

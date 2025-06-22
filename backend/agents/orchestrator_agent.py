@@ -1,3 +1,4 @@
+import os
 from .video_processing_agent import video_processing_agent
 from .vision_analysis_agent import vision_analysis_agent
 from .music_generation_agent import music_generation_agent
@@ -13,9 +14,23 @@ def run_video_to_music_workflow(video_path: str, vision_prompt: str, music_promp
     """
     print("Starting workflow...")
 
-    # Step 1: Extract frames using the video processing agent
-    frames = extract_frames(video_path=video_path)
-    print(f"Frames extracted: {frames}")
+    # Step 1: Check if frames already exist, if not extract them
+    frames_dir = os.path.join(os.path.dirname(video_path), "frames")
+    
+    if os.path.exists(frames_dir) and os.listdir(frames_dir):
+        # Use existing frames
+        existing_frames = [
+            os.path.join(frames_dir, f) 
+            for f in sorted(os.listdir(frames_dir)) 
+            if f.lower().endswith(('.jpg', '.jpeg', '.png'))
+        ]
+        print(f"Using existing {len(existing_frames)} frames from upload")
+        frames = existing_frames
+    else:
+        # Extract frames if they don't exist
+        print("No existing frames found, extracting frames...")
+        frames = extract_frames(video_path=video_path, num_frames=5)
+        print(f"Frames extracted: {len(frames)}")
 
     # Step 2: Analyze frames using the vision analysis agent
     description = analyze_images(image_paths=frames, prompt=vision_prompt)
