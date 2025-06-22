@@ -1,10 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
 import uvicorn
+from agents import OrchestratorAgent
 
-app = FastAPI(title="Gita API", description="Music search API")
+app = FastAPI(title="Gita API", description="AI Music Generation API")
 
 # Add CORS middleware
 app.add_middleware(
@@ -17,21 +17,14 @@ app.add_middleware(
 
 
 # Pydantic models for request/response
-class SearchRequest(BaseModel):
-    query: str
+class GenerateMusicRequest(BaseModel):
+    video_path: str  # In a real app, this would be a file upload
+    vision_prompt: str
+    music_prompt: str
 
 
-class MusicTrack(BaseModel):
-    title: str
-    artist: str
-    genre: str
-    duration: str
-    mood: str
-    download_url: str
-
-
-class SearchResponse(BaseModel):
-    results: List[MusicTrack]
+class GenerateMusicResponse(BaseModel):
+    final_video_path: str
 
 
 class HealthResponse(BaseModel):
@@ -39,85 +32,25 @@ class HealthResponse(BaseModel):
     message: str
 
 
-# Mock music database - in a real app, this would come from a database
-MOCK_MUSIC_DB = [
-    {
-        "title": "Upbeat Adventure",
-        "artist": "Creative Commons",
-        "genre": "Electronic",
-        "duration": "2:45",
-        "mood": "energetic",
-        "download_url": "https://example.com/upbeat-adventure.mp3",
-    },
-    {
-        "title": "Calm Waters",
-        "artist": "Free Music Archive",
-        "genre": "Ambient",
-        "duration": "3:20",
-        "mood": "relaxing",
-        "download_url": "https://example.com/calm-waters.mp3",
-    },
-    {
-        "title": "Tech Startup",
-        "artist": "CC Mixter",
-        "genre": "Corporate",
-        "duration": "1:55",
-        "mood": "professional",
-        "download_url": "https://example.com/tech-startup.mp3",
-    },
-    {
-        "title": "Summer Vibes",
-        "artist": "Incompetech",
-        "genre": "Pop",
-        "duration": "2:30",
-        "mood": "happy",
-        "download_url": "https://example.com/summer-vibes.mp3",
-    },
-    {
-        "title": "Night Drive",
-        "artist": "Free Music Archive",
-        "genre": "Synthwave",
-        "duration": "4:15",
-        "mood": "mysterious",
-        "download_url": "https://example.com/night-drive.mp3",
-    },
-]
-
-
 @app.get("/", response_model=dict)
 def root():
     return {
         "message": "Gita API is running!",
-        "endpoints": ["/health", "/search-music"],
+        "endpoints": ["/health", "/generate-music-from-video"],
         "docs": "/docs",
     }
 
 
-@app.post("/search-music", response_model=SearchResponse)
-def search_music(request: SearchRequest):
+@app.post("/generate-music-from-video", response_model=GenerateMusicResponse)
+def generate_music_from_video(request: GenerateMusicRequest):
     try:
-        query = request.query.lower()
-
-        if not query:
-            return SearchResponse(results=[])
-
-        # Simple search logic - in a real app, you'd use a proper search engine
-        results = []
-        for track_data in MOCK_MUSIC_DB:
-            track = MusicTrack(**track_data)
-            if (
-                query in track.title.lower()
-                or query in track.artist.lower()
-                or query in track.genre.lower()
-                or query in track.mood.lower()
-            ):
-                results.append(track)
-
-        # If no exact matches, return all tracks (for demo purposes)
-        if not results:
-            results = [MusicTrack(**track_data) for track_data in MOCK_MUSIC_DB[:3]]
-
-        return SearchResponse(results=results)
+        orchestrator = OrchestratorAgent()
+        final_video_path = orchestrator.run(
+            video_path=request.video_path,
+            vision_prompt=request.vision_prompt,
+            music_prompt=request.music_prompt,
+        )
+        return GenerateMusicResponse(final_video_path=final_video_path)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
